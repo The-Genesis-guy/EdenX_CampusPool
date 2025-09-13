@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, make_response, current_app
 from ..models.user_model import User
 from .. import mongo
+from ..utils.jwt_utils import generate_jwt_token, verify_jwt_token, token_required
 import datetime
 import secrets
 
@@ -61,6 +62,7 @@ def confirm_email(token):
         {"_id": user['_id']},
         {"$set": {"status": "verified"}, "$unset": {"confirmation_token": "", "confirmation_token_expiry": ""}}
     )
+
     return make_response("<h1>Your email has been confirmed successfully! You can now log in.</h1>", 200)
 
 @auth_bp.route('/login', methods=['POST'])
@@ -76,9 +78,58 @@ def login():
     from flask_bcrypt import Bcrypt
     bcrypt = Bcrypt()
     if user_data and bcrypt.check_password_hash(user_data['password_hash'], data['password']):
+        # Generate JWT token
+        token = generate_jwt_token(
+            user_id=user_data['_id'],
+            email=user_data['email'],
+            role=user_data['role']
+        )
+        
         return jsonify({
             "message": "Login successful!",
-            "user": {"name": user_data['name'], "email": user_data['email']}
+            "token": token,
+            "user": {
+                "id": str(user_data['_id']),
+                "name": user_data['name'],
+                "email": user_data['email'],
+                "role": user_data['role']
+            }
         }), 200
     else:
         return jsonify({"error": "Invalid credentials"}), 401
+
+@auth_bp.route('/verify-token', methods=['POST'])
+@token_required
+def verify_token():
+    """Verify if the current token is valid"""
+    return jsonify({
+        "message": "Token is valid",
+        "user": request.current_user
+    }), 200
+
+@auth_bp.route('/logout', methods=['POST'])
+@token_required
+def logout():
+    """Logout endpoint (client should remove token)"""
+    return jsonify({"message": "Logged out successfully"}), 200
+
+@auth_bp.route('/profile', methods=['GET'])
+@token_required
+def get_profile():
+    """Get current user profile"""
+    user_data = User.find_by_id(request.current_user['user_id'])
+    if not user_data:
+        return jsonify({"error": "User not found"}), 404
+    
+    return jsonify({
+        "user": {
+            "id": str(user_data['_id']),
+            "name": user_data['name'],
+            "email": user_data['email'],
+            "role": user_data['role'],
+            "homeAddress": user_data['home_address_text'],
+            "coordinates": user_data['homeLocation']['coordinates'],
+            "averageRating": user_data['averageRating'],
+            "driverStatus": user_data.get('driverStatus', 'not_applicable')
+        }
+    }), 200

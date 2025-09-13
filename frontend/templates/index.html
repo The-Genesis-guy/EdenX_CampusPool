@@ -43,12 +43,17 @@
         <div id="message-area" class="hidden"></div>
         
         <div id="app-view" class="hidden">
+            <div class="user-info">
+                <h2 id="user-name">Welcome!</h2>
+                <p id="user-role"></p>
+                <button onclick="handleLogout()" class="logout-btn">Logout</button>
+            </div>
             <h2>Welcome to CampusPool!</h2>
             <p>You are logged in. The map and ride functionality will appear here.</p>
         </div>
     </main>
 
-    <script src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places,marker&callback=initApp" async defer></script>
     <script src="/static/js/script.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places,marker&callback=initApp" async defer></script>
 </body>
 </html>

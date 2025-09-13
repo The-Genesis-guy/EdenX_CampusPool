@@ -1,19 +1,57 @@
-// Global function for Google Maps API callback
-function initApp() {
+// Define initApp immediately to ensure it's available when Google Maps API loads
+window.initApp = function() {
     console.log('Google Maps API loaded successfully');
     // Initialize Places Autocomplete
-    initializePlacesAutocomplete();
-}
+    if (typeof initializePlacesAutocomplete === 'function') {
+        initializePlacesAutocomplete();
+    } else {
+        console.log('initializePlacesAutocomplete not yet defined, will retry...');
+        setTimeout(() => {
+            if (typeof initializePlacesAutocomplete === 'function') {
+                initializePlacesAutocomplete();
+            }
+        }, 100);
+    }
+};
 
 // Global variable to store coordinates
 let currentCoordinates = null;
+let authToken = null;
 
-// Initialize Google Places Autocomplete
+// Token management functions
+function setAuthToken(token) {
+    authToken = token;
+    localStorage.setItem('campuspool_token', token);
+}
+
+function getAuthToken() {
+    if (!authToken) {
+        authToken = localStorage.getItem('campuspool_token');
+    }
+    return authToken;
+}
+
+function clearAuthToken() {
+    authToken = null;
+    localStorage.removeItem('campuspool_token');
+}
+
+function isAuthenticated() {
+    return getAuthToken() !== null;
+}
+
+// Initialize Places Autocomplete
 function initializePlacesAutocomplete() {
     const addressInput = document.getElementById('register-address');
     
     if (!addressInput) {
         console.error('Address input not found');
+        return;
+    }
+    
+    // Check if already initialized
+    if (addressInput.hasAttribute('data-autocomplete-initialized')) {
+        console.log('Autocomplete already initialized');
         return;
     }
 
@@ -23,6 +61,9 @@ function initializePlacesAutocomplete() {
         componentRestrictions: { country: 'in' },
         fields: ['formatted_address', 'geometry', 'name']
     });
+    
+    // Mark as initialized
+    addressInput.setAttribute('data-autocomplete-initialized', 'true');
 
     // Listen for place selection
     autocomplete.addListener('place_changed', () => {
@@ -65,11 +106,112 @@ document.addEventListener('DOMContentLoaded', () => {
     const addressInput = document.getElementById('register-address');
     const addressStatus = document.getElementById('address-status');
 
+    // Check if user is already authenticated
+    if (isAuthenticated()) {
+        verifyTokenAndShowApp();
+    }
+    
+    // Initialize autocomplete if Google Maps API is already loaded
+    if (typeof google !== 'undefined' && typeof google.maps !== 'undefined' && typeof google.maps.places !== 'undefined') {
+        console.log('Google Maps API already loaded, initializing autocomplete...');
+        initializePlacesAutocomplete();
+    } else {
+        console.log('Google Maps API not yet loaded, waiting for callback...');
+    }
+    
+    // Fallback: Try to initialize autocomplete after delays
+    setTimeout(() => {
+        if (typeof google !== 'undefined' && typeof google.maps !== 'undefined' && typeof google.maps.places !== 'undefined') {
+            const addressInput = document.getElementById('register-address');
+            if (addressInput && !addressInput.hasAttribute('data-autocomplete-initialized')) {
+                console.log('Fallback (2s): Initializing autocomplete...');
+                initializePlacesAutocomplete();
+            }
+        }
+    }, 2000);
+    
+    // Additional fallback after 5 seconds
+    setTimeout(() => {
+        if (typeof google !== 'undefined' && typeof google.maps !== 'undefined' && typeof google.maps.places !== 'undefined') {
+            const addressInput = document.getElementById('register-address');
+            if (addressInput && !addressInput.hasAttribute('data-autocomplete-initialized')) {
+                console.log('Fallback (5s): Initializing autocomplete...');
+                initializePlacesAutocomplete();
+            }
+        }
+    }, 5000);
+
     registerForm.addEventListener('submit', handleRegister);
     loginForm.addEventListener('submit', handleLogin);
     showLoginLink.addEventListener('click', showLogin);
     showRegisterLink.addEventListener('click', showRegister);
     getLocationBtn.addEventListener('click', handleGetLocation);
+
+    async function verifyTokenAndShowApp() {
+        try {
+            const response = await fetch(`${API_URL}/auth/verify-token`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${getAuthToken()}`
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                console.log('User authenticated:', data.user);
+                showApp();
+            } else {
+                clearAuthToken();
+                showLogin();
+            }
+        } catch (error) {
+            console.error('Token verification failed:', error);
+            clearAuthToken();
+            showLogin();
+        }
+    }
+
+    function showApp() {
+        loginForm.classList.add('hidden');
+        registerForm.classList.add('hidden');
+        messageArea.classList.add('hidden');
+        appView.classList.remove('hidden');
+        loadUserProfile();
+    }
+
+    async function loadUserProfile() {
+        try {
+            const response = await fetch(`${API_URL}/auth/profile`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${getAuthToken()}`
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                console.log('User profile:', data.user);
+                // Update UI with user data
+                updateUserInterface(data.user);
+            }
+        } catch (error) {
+            console.error('Failed to load profile:', error);
+        }
+    }
+
+    function updateUserInterface(user) {
+        // Update the app interface with user information
+        const userNameElement = document.getElementById('user-name');
+        if (userNameElement) {
+            userNameElement.textContent = `Welcome, ${user.name}!`;
+        }
+        
+        const userRoleElement = document.getElementById('user-role');
+        if (userRoleElement) {
+            userRoleElement.textContent = `Role: ${user.role}`;
+        }
+    }
 
     function handleGetLocation() {
         if (!navigator.geolocation) {
@@ -125,14 +267,32 @@ document.addEventListener('DOMContentLoaded', () => {
         addressStatus.style.color = "#007bff";
         
         const url = `${API_URL}/maps/reverse-geocode`;
+        const token = getAuthToken();
+        
         try {
+            const headers = { 
+                'Content-Type': 'application/json'
+            };
+            
+            // Only add Authorization header if user is authenticated
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            
             const response = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: headers,
                 body: JSON.stringify({ lat: lat, lng: lng })
             });
             
             if (!response.ok) {
+                if (response.status === 401) {
+                    // If user is not authenticated, just use coordinates as fallback
+                    addressStatus.textContent = "⚠️ Could not fetch address. Using coordinates.";
+                    addressStatus.style.color = "#ffc107";
+                    addressInput.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                    return;
+                }
                 throw new Error(`Server error: ${response.status}`);
             }
             
@@ -214,12 +374,29 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Login failed');
-            loginForm.classList.add('hidden');
-            registerForm.classList.add('hidden');
-            messageArea.classList.add('hidden');
-            appView.classList.remove('hidden');
+            
+            // Store the JWT token
+            setAuthToken(data.token);
+            showApp();
+            
         } catch (error) {
             showMessage(error.message, 'error');
+        }
+    }
+
+    async function handleLogout() {
+        try {
+            await fetch(`${API_URL}/auth/logout`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${getAuthToken()}`
+                }
+            });
+        } catch (error) {
+            console.error('Logout error:', error);
+        } finally {
+            clearAuthToken();
+            showLogin();
         }
     }
 
@@ -242,4 +419,7 @@ document.addEventListener('DOMContentLoaded', () => {
         messageArea.classList.add('hidden');
         appView.classList.add('hidden');
     }
+
+    // Add logout functionality
+    window.handleLogout = handleLogout;
 });
