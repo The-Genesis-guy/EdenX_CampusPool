@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CampusPool</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>CampusPool</h1>
+        <nav>
+            <a href="#" id="show-login-link">Login</a>
+            <a href="#" id="show-register-link">Register</a>
+        </nav>
+    </header>
+
+    <main>
+        <form id="register-form" class="auth-form hidden">
+            <h2>Register</h2>
+            <input type="text" id="register-name" placeholder="Full Name" required>
+            <input type="email" id="register-email" placeholder="College Email" required>
+            <input type="password" id="register-password" placeholder="Password" required>
+            <div class="address-group">
+                <input type="text" id="register-address" placeholder="Enter your home address or click 'Use My Location'" required autocomplete="off">
+                <button type="button" id="get-location-btn">Use My Location</button>
+            </div>
+            <small id="address-status" class="address-status"></small>
+            <div class="role-selector">
+                <label><input type="radio" name="role" value="rider" checked> I'm a Rider</label>
+                <label><input type="radio" name="role" value="driver"> I'm a Driver</label>
+            </div>
+            <button type="submit">Register</button>
+        </form>
+
+        <form id="login-form" class="auth-form">
+            <h2>Login</h2>
+            <input type="email" id="login-email" placeholder="Email" required>
+            <input type="password" id="login-password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
+
+        <div id="message-area" class="hidden"></div>
+        
+        <div id="app-view" class="hidden">
+            <h2>Welcome to CampusPool!</h2>
+            <p>You are logged in. The map and ride functionality will appear here.</p>
+        </div>
+    </main>
+
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places,marker&callback=initApp" async defer></script>
+    <script src="/static/js/script.js"></script>
+</body>
+</html>
