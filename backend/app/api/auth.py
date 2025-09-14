@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, make_response, current_app
-from ..models.user_model import User
+from app.models.user_model import User
 from .. import mongo
-from ..utils.jwt_utils import generate_jwt_token, verify_jwt_token, token_required
+from app.utils.jwt_utils import generate_jwt_token, verify_jwt_token, token_required
 import datetime
 import secrets
 

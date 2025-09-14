@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CampusPool - Find Your Ride</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="user-info">
+                    <h2 id="user-name">Loading...</h2>
+                    <p class="user-role">Rider</p>
+                </div>
+                <button onclick="handleLogout()" class="logout-btn">Logout</button>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Content -->
+        <main class="dashboard-content">
+            <!-- Location Selection Section -->
+            <section class="location-section">
+                <h3>Where do you want to go?</h3>
+                
+                <div class="form-group">
+                    <label for="pickup-input">Pickup Location</label>
+                    <div class="location-input-group">
+                        <input 
+                            type="text" 
+                            id="pickup-input" 
+                            class="form-input location-input" 
+                            placeholder="Enter pickup location or use current"
+                            autocomplete="off"
+                        >
+                        <button id="current-location-btn" class="location-btn" title="Use current location">
+                            📍
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="destination-input">Destination</label>
+                    <div class="location-input-group">
+                        <input 
+                            type="text" 
+                            id="destination-input" 
+                            class="form-input location-input" 
+                            placeholder="Enter destination"
+                            autocomplete="off"
+                        >
+                        <button id="college-location-btn" class="location-btn" title="Set to college">
+                            🏫
+                        </button>
+                    </div>
+                </div>
+
+                <button id="search-rides-btn" class="btn btn-primary btn-full">
+                    🔍 Find Available Rides
+                </button>
+            </section>
+
+            <!-- Status Messages -->
+            <div id="status-message" class="hidden"></div>
+
+            <!-- View Toggle -->
+            <div id="view-toggle" class="view-toggle hidden">
+                <button id="map-view-btn" class="view-btn active">🗺️ Map View</button>
+                <button id="list-view-btn" class="view-btn">📋 List View</button>
+            </div>
+
+            <!-- Map Container -->
+            <div id="map-container" class="map-container hidden">
+                <div id="map"></div>
+            </div>
+
+            <!-- Drivers List -->
+            <div id="drivers-section" class="hidden">
+                <div id="drivers-list" class="drivers-list">
+                    <!-- Driver cards will be populated here -->
+                </div>
+                
+                <div id="no-drivers" class="empty-state hidden">
+                    <h3>No rides available</h3>
+                    <p>Try adjusting your pickup location or check back later.</p>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <span>Searching for nearby rides...</span>
+            </div>
+        </main>
+
+        <!-- Profile Completion Modal -->
+        <div id="profile-modal" class="modal-overlay hidden">
+            <div class="modal-content">
+                <h3>Complete Your Profile</h3>
+                <p class="mb-4 text-center">Please provide additional information to continue using CampusPool.</p>
+                
+                <form id="profile-form">
+                    <div class="form-group">
+                        <label for="phone">Phone Number *</label>
+                        <input 
+                            type="tel" 
+                            id="phone" 
+                            class="form-input" 
+                            placeholder="10-digit mobile number" 
+                            maxlength="10"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="emergency-contact">Emergency Contact (Optional)</label>
+                        <input 
+                            type="tel" 
+                            id="emergency-contact" 
+                            class="form-input" 
+                            placeholder="Emergency contact number"
+                            maxlength="10"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="college-id">Student ID (Optional)</label>
+                        <input 
+                            type="text" 
+                            id="college-id" 
+                            class="form-input" 
+                            placeholder="Your student ID number"
+                        >
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-full">
+                        Complete Profile
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Ride Request Modal -->
+        <div id="request-modal" class="modal-overlay hidden">
+            <div class="modal-content">
+                <h3>Confirm Ride Request</h3>
+                <div id="request-details">
+                    <!-- Request details will be populated here -->
+                </div>
+                <div class="form-group">
+                    <button id="confirm-request-btn" class="btn btn-primary btn-full">
+                        Send Request
+                    </button>
+                    <button id="cancel-request-btn" class="btn btn-outline btn-full mt-2">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/rider_dashboard.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places,marker&callback=initRiderApp" async defer></script>
+</body>
+</html>

@@ -31,6 +31,16 @@ def create_app():
     def index():
         maps_api_key = app.config.get('GOOGLE_MAPS_API_KEY', '')
         return render_template("index.html", maps_api_key=maps_api_key)
+    
+    @app.route("/rider")
+    def rider_dashboard():
+        maps_api_key = app.config.get('GOOGLE_MAPS_API_KEY', '')
+        return render_template("rider_dashboard.html", maps_api_key=maps_api_key)
+
+    @app.route("/driver")
+    def driver_dashboard():
+        maps_api_key = app.config.get('GOOGLE_MAPS_API_KEY', '')
+        return render_template("driver_dashboard.html", maps_api_key=maps_api_key)
 
     # Register API blueprints
     from .api.auth import auth_bp
@@ -38,5 +48,15 @@ def create_app():
     
     from .api.maps import maps_bp
     app.register_blueprint(maps_bp, url_prefix='/api/maps')
+    
+    
+    from .api.rides import rides_bp
+    app.register_blueprint(rides_bp, url_prefix='/api/rides')
+    
+    from .api.profiles import profiles_bp
+    app.register_blueprint(profiles_bp, url_prefix='/api/profiles')
+
 
     return app
+
+    

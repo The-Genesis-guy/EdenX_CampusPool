@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CampusPool - Driver Dashboard</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="user-info">
+                    <h2 id="user-name">Loading...</h2>
+                    <p class="user-role">Driver</p>
+                </div>
+                <button onclick="handleLogout()" class="logout-btn">Logout</button>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Content -->
+        <main class="dashboard-content">
+            <!-- Online/Offline Toggle -->
+            <div class="toggle-container">
+                <div>
+                    <div class="toggle-label">Go Online</div>
+                    <small class="text-secondary">Start accepting ride requests</small>
+                </div>
+                <div class="toggle-switch" id="online-toggle">
+                    <div class="toggle-slider"></div>
+                </div>
+            </div>
+
+            <!-- Route Setup Section (shown when going online) -->
+            <section id="route-section" class="location-section hidden">
+                <h3>Set Your Route</h3>
+                
+                <div class="form-group">
+                    <label for="pickup-input">Starting Point</label>
+                    <div class="location-input-group">
+                        <input 
+                            type="text" 
+                            id="pickup-input" 
+                            class="form-input location-input" 
+                            placeholder="Where are you starting from?"
+                            autocomplete="off"
+                        >
+                        <button id="current-location-btn" class="location-btn" title="Use current location">
+                            📍
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="destination-input">Destination</label>
+                    <div class="location-input-group">
+                        <input 
+                            type="text" 
+                            id="destination-input" 
+                            class="form-input location-input" 
+                            placeholder="Where are you going?"
+                            autocomplete="off"
+                        >
+                        <button id="college-location-btn" class="location-btn" title="Set to college">
+                            🏫
+                        </button>
+                    </div>
+                </div>
+
+                <button id="start-ride-btn" class="btn btn-secondary btn-full">
+                    🚀 Start Accepting Requests
+                </button>
+            </section>
+
+            <!-- Status Messages -->
+            <div id="status-message" class="hidden"></div>
+
+            <!-- Online Status -->
+            <div id="online-status" class="status-message status-success hidden">
+                <strong>🟢 You're Online!</strong><br>
+                Riders can now see and request rides from you.
+            </div>
+
+            <!-- Ride Requests Section -->
+            <section id="requests-section" class="hidden">
+                <div class="location-section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h3>Ride Requests</h3>
+                        <button id="refresh-requests-btn" class="btn btn-outline" style="padding: 0.5rem 1rem;">
+                            🔄 Refresh
+                        </button>
+                    </div>
+                    
+                    <div id="requests-list" class="requests-list">
+                        <!-- Request cards will be populated here -->
+                    </div>
+                    
+                    <div id="no-requests" class="empty-state hidden">
+                        <h3>No ride requests yet</h3>
+                        <p>Wait for riders to request your ride. Requests will appear here automatically.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Active Ride Section -->
+            <section id="active-ride-section" class="hidden">
+                <div class="location-section">
+                    <h3>Active Ride</h3>
+                    <div id="active-ride-details">
+                        <!-- Active ride details will be populated here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Loading State -->
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <span>Loading requests...</span>
+            </div>
+        </main>
+
+        <!-- Profile Completion Modal -->
+        <div id="profile-modal" class="modal-overlay hidden">
+            <div class="modal-content">
+                <h3>Complete Your Driver Profile</h3>
+                <p class="mb-4 text-center">Please provide your vehicle information to start offering rides.</p>
+                
+                <form id="profile-form">
+                    <div class="form-group">
+                        <label for="phone">Phone Number *</label>
+                        <input 
+                            type="tel" 
+                            id="phone" 
+                            class="form-input" 
+                            placeholder="10-digit mobile number" 
+                            maxlength="10"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="vehicle-model">Vehicle Model *</label>
+                        <input 
+                            type="text" 
+                            id="vehicle-model" 
+                            class="form-input" 
+                            placeholder="e.g., Honda Activa, Bajaj Pulsar"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="vehicle-color">Vehicle Color *</label>
+                        <input 
+                            type="text" 
+                            id="vehicle-color" 
+                            class="form-input" 
+                            placeholder="e.g., Red, Blue, Black"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="vehicle-plate">Vehicle Number *</label>
+                        <input 
+                            type="text" 
+                            id="vehicle-plate" 
+                            class="form-input" 
+                            placeholder="e.g., KA01AB1234"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="emergency-contact">Emergency Contact (Optional)</label>
+                        <input 
+                            type="tel" 
+                            id="emergency-contact" 
+                            class="form-input" 
+                            placeholder="Emergency contact number"
+                            maxlength="10"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="college-id">Student ID (Optional)</label>
+                        <input 
+                            type="text" 
+                            id="college-id" 
+                            class="form-input" 
+                            placeholder="Your student ID number"
+                        >
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-full">
+                        Complete Profile
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- OTP Modal for Accepted Rides -->
+        <div id="otp-modal" class="modal-overlay hidden">
+            <div class="modal-content">
+                <h3>Ride Accepted!</h3>
+                <div id="otp-details" class="text-center mb-4">
+                    <!-- OTP details will be populated here -->
+                </div>
+                <button id="close-otp-modal" class="btn btn-primary btn-full">
+                    Got it!
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/driver_dashboard.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places,marker&callback=initDriverApp" async defer></script>
+</body>
+</html>

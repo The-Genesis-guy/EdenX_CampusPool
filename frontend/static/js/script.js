@@ -377,7 +377,16 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Store the JWT token
             setAuthToken(data.token);
-            showApp();
+            localStorage.setItem('campuspool_user_data', JSON.stringify(data.user));
+
+if (data.user.role === 'rider') {
+    window.location.href = '/rider';
+} else if (data.user.role === 'driver') {
+    window.location.href = '/driver';
+}
+            else {
+                showApp(); // fallback, in case role is missing or new
+            }
             
         } catch (error) {
             showMessage(error.message, 'error');

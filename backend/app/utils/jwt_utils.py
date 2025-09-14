@@ -72,7 +72,8 @@ def token_required(f):
 
 def role_required(required_role):
     """
-    Decorator to require specific role for routes
+    Decorator to require specific role for routes.
+    Use after @token_required decorator.
     """
     def decorator(f):
         @wraps(f)
@@ -81,7 +82,7 @@ def role_required(required_role):
                 return jsonify({'error': 'Authentication required'}), 401
             
             if request.current_user['role'] != required_role:
-                return jsonify({'error': 'Insufficient permissions'}), 403
+                return jsonify({'error': f'Access denied. {required_role} role required.'}), 403
             
             return f(*args, **kwargs)
         return decorated
