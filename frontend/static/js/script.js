@@ -266,16 +266,67 @@ async function reverseGeocode(lat, lng) {
     addressStatus.textContent = "🔄 Converting coordinates to address...";
     addressStatus.style.color = "#007bff";
     
-    // Skip API call during registration, just use coordinates
+    // For registration, we'll use a simpler approach
     try {
-        addressInput.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-        addressStatus.textContent = "✅ Location coordinates set!";
-        addressStatus.style.color = "#28a745";
+        // Try to get address using browser's built-in reverse geocoding if available
+        if (window.google && window.google.maps) {
+            const geocoder = new google.maps.Geocoder();
+            const latLng = { lat: lat, lng: lng };
+            
+            geocoder.geocode({ location: latLng }, (results, status) => {
+                if (status === 'OK' && results[0]) {
+                    addressInput.value = results[0].formatted_address;
+                    addressStatus.textContent = "✅ Address found!";
+                    addressStatus.style.color = "#28a745";
+                } else {
+                    // Fallback to coordinates
+                    addressInput.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                    addressStatus.textContent = "✅ Location set using coordinates";
+                    addressStatus.style.color = "#28a745";
+                }
+            });
+        } else {
+            // If Google Maps not available, try our API
+            await tryAPIReverseGeocode(lat, lng);
+        }
     } catch (error) {
-        addressStatus.textContent = "✅ Using coordinate location";
-        addressStatus.style.color = "#28a745";
-        console.log("Using coordinates instead of address:", error);
+        // Fallback to coordinates
         addressInput.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        addressStatus.textContent = "✅ Location set using coordinates";
+        addressStatus.style.color = "#28a745";
+        console.log("Using coordinates as fallback:", error);
+    }
+}
+
+async function tryAPIReverseGeocode(lat, lng) {
+    try {
+        const response = await fetch(`${API_URL}/maps/reverse-geocode`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+                // No auth header needed for registration
+            },
+            body: JSON.stringify({ lat: lat, lng: lng })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.status === 'OK' && data.results && data.results[0]) {
+                addressInput.value = data.results[0].formatted_address;
+                addressStatus.textContent = "✅ Address found!";
+                addressStatus.style.color = "#28a745";
+                return;
+            }
+        }
+        
+        // Fallback to coordinates if API fails
+        throw new Error('API geocoding failed');
+        
+    } catch (error) {
+        // Final fallback
+        addressInput.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        addressStatus.textContent = "✅ Location set using coordinates";
+        addressStatus.style.color = "#28a745";
     }
 }
 

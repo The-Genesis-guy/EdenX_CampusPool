@@ -57,9 +57,78 @@
                     </div>
                 </div>
 
-                <button id="search-rides-btn" class="btn btn-primary btn-full">
-                    🔍 Find Available Rides
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                    <button id="search-rides-btn" class="btn btn-primary" style="flex: 1;">
+                        🔍 Find Now
+                    </button>
+                    <button id="prebook-btn" class="btn btn-outline" style="flex: 1;">
+                        📅 Pre-Book
+                    </button>
+                    <button id="my-prebooks-btn" class="btn btn-outline" style="flex: 1;">
+                        📋 My Requests
+                    </button>
+                </div>
+            </section>
+            <!-- Pre-Booking Section -->
+            <section id="prebook-section" class="location-section hidden">
+                <h3>📅 Schedule Future Ride</h3>
+                
+                <div class="form-group">
+                    <label for="prebook-datetime">When do you need the ride?</label>
+                    <input 
+                        type="datetime-local" 
+                        id="prebook-datetime" 
+                        class="form-input"
+                        min=""
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="max-fare">Maximum fare (optional)</label>
+                    <input 
+                        type="number" 
+                        id="max-fare" 
+                        class="form-input" 
+                        placeholder="e.g., 150"
+                        min="50"
+                        max="500"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="ride-notes">Special instructions (optional)</label>
+                    <textarea 
+                        id="ride-notes" 
+                        class="form-input" 
+                        placeholder="e.g., Wait outside main gate, I have luggage"
+                        maxlength="200"
+                        rows="3"
+                    ></textarea>
+                </div>
+
+                <button id="create-prebook-btn" class="btn btn-secondary btn-full">
+                    📅 Create Pre-Booking Request
                 </button>
+            </section>
+
+            <!-- My Pre-Bookings Section -->
+            <section id="my-prebooks-section" class="location-section hidden">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h3>📋 My Pre-Bookings</h3>
+                    <button id="refresh-prebooks-btn" class="btn btn-outline" style="padding: 0.5rem 1rem;">
+                        🔄 Refresh
+                    </button>
+                </div>
+                
+                <div id="prebooks-list" class="drivers-list">
+                    <!-- Pre-booking cards will be populated here -->
+                </div>
+                
+                <div id="no-prebooks" class="empty-state hidden">
+                    <h3>No pre-bookings yet</h3>
+                    <p>Create your first pre-booking request to schedule future rides.</p>
+                </div>
             </section>
 
             <!-- Status Messages -->

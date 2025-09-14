@@ -376,3 +376,107 @@ class RideHistory:
             "total_distance": 0,
             "avg_rating": 0
         }
+    
+
+class PreBookRequest:
+    """
+    Model for future ride requests (pre-booking marketplace)
+    """
+    def __init__(self, rider_id, pickup_location, destination_location, 
+                 pickup_address, destination_address, requested_datetime, 
+                 max_fare=None, notes=None):
+        self.rider_id = ObjectId(rider_id)
+        self.pickup_location = pickup_location  # GeoJSON Point
+        self.destination_location = destination_location  # GeoJSON Point
+        self.pickup_address = pickup_address
+        self.destination_address = destination_address
+        self.requested_datetime = requested_datetime  # When they want the ride
+        self.max_fare = max_fare  # Maximum willing to pay
+        self.notes = notes  # Special instructions
+        self.status = "open"  # open, matched, expired, cancelled
+        self.created_at = datetime.datetime.utcnow()
+        self.expires_at = requested_datetime  # Auto-expire after ride time
+        self.matched_driver_id = None
+        self.estimated_fare = None
+        
+    def save(self):
+        """Save pre-book request to database"""
+        request_data = {
+            "rider_id": self.rider_id,
+            "pickup_location": self.pickup_location,
+            "destination_location": self.destination_location,
+            "pickup_address": self.pickup_address,
+            "destination_address": self.destination_address,
+            "requested_datetime": self.requested_datetime,
+            "max_fare": self.max_fare,
+            "notes": self.notes,
+            "status": self.status,
+            "created_at": self.created_at,
+            "expires_at": self.expires_at,
+            "matched_driver_id": self.matched_driver_id,
+            "estimated_fare": self.estimated_fare
+        }
+        return mongo.db.prebook_requests.insert_one(request_data)
+    
+@staticmethod
+def find_nearby_requests(driver_location, max_distance_km=20):
+    pipeline = [
+        {
+            "$geoNear": {
+                "near": driver_location,
+                "distanceField": "distance_to_rider_home",
+                "maxDistance": max_distance_km * 1000,
+                "spherical": True,
+                "query": {
+                    "status": "open",
+                    "requested_datetime": {"$gt": datetime.datetime.utcnow()}
+                }
+            }
+        },
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "rider_id",
+                "foreignField": "_id",
+                "as": "rider_info"
+            }
+        },
+        {"$unwind": "$rider_info"},
+        {
+            "$lookup": {
+                "from": "user_profiles",
+                "localField": "rider_id",
+                "foreignField": "user_id",
+                "as": "rider_profile"
+            }
+        },
+        {"$sort": {"requested_datetime": 1}}
+    ]
+    
+    return list(mongo.db.prebook_requests.aggregate(pipeline))
+
+
+    @staticmethod
+    def find_by_rider_id(rider_id, status_filter=None):
+        """Find pre-booking requests by rider"""
+        query = {"rider_id": ObjectId(rider_id)}
+        if status_filter:
+            query["status"] = status_filter
+        
+        return list(mongo.db.prebook_requests.find(query).sort("requested_datetime", 1))
+    
+    @staticmethod
+    def update_status(request_id, new_status, driver_id=None):
+        """Update pre-booking request status"""
+        update_data = {
+            "status": new_status,
+            "updated_at": datetime.datetime.utcnow()
+        }
+        
+        if driver_id:
+            update_data["matched_driver_id"] = ObjectId(driver_id)
+            
+        return mongo.db.prebook_requests.update_one(
+            {"_id": ObjectId(request_id)},
+            {"$set": update_data}
+        )

@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from app.models.ride_model import Ride, RideRequest
+from app.models.ride_model import Ride, RideRequest, PreBookRequest
 from app.models.user_model import User
 from app.utils.jwt_utils import token_required, role_required
 from app.utils.distance_utils import calculate_haversine_distance, calculate_smart_score, calculate_cost_sharing_fare
@@ -722,4 +722,376 @@ def get_driver_location(request_id):
         response_data['location_updated_at'] = driver_ride.get('location_updated_at')
     
     return jsonify(response_data), 200
+
+
+# ===============================
+# PRE-BOOKING ENDPOINTS (PHASE 3)
+# ===============================
+
+@rides_bp.route('/prebook/request', methods=['POST'])
+@token_required
+@role_required('rider')
+def create_prebook_request():
+    """Rider creates a future ride request"""
+    data = request.get_json()
+    
+    required_fields = ['pickup_location', 'destination_location', 
+                      'pickup_address', 'destination_address', 'requested_datetime']
+    
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": "Missing required fields"}), 400
+    
+    rider_id = request.current_user['user_id']
+    
+    # Parse requested datetime
+    try:
+        requested_dt = datetime.datetime.fromisoformat(data['requested_datetime'].replace('Z', '+00:00'))
+    except:
+        return jsonify({"error": "Invalid datetime format. Use ISO format."}), 400
+    
+    # Validate future datetime
+    if requested_dt <= datetime.datetime.now(datetime.timezone.utc):
+        return jsonify({"error": "Requested time must be in the future"}), 400
+    
+    # Check if rider already has active pre-booking for similar time
+    existing = mongo.db.prebook_requests.find_one({
+        "rider_id": ObjectId(rider_id),
+        "status": "open",
+        "requested_datetime": {
+            "$gte": requested_dt - datetime.timedelta(hours=2),
+            "$lte": requested_dt + datetime.timedelta(hours=2)
+        }
+    })
+    
+    if existing:
+        return jsonify({"error": "You already have a pending request for a similar time"}), 409
+    
+    # Create GeoJSON points
+    pickup_geojson = {
+        "type": "Point",
+        "coordinates": data['pickup_location']
+    }
+    
+    dest_geojson = {
+        "type": "Point",
+        "coordinates": data['destination_location']
+    }
+    
+    # Calculate estimated fare
+    trip_distance = calculate_haversine_distance(data['pickup_location'], data['destination_location'])
+    estimated_fare = calculate_cost_sharing_fare(trip_distance)
+    
+    # Create pre-booking request
+    prebook_request = PreBookRequest(
+        rider_id=rider_id,
+        pickup_location=pickup_geojson,
+        destination_location=dest_geojson,
+        pickup_address=data['pickup_address'],
+        destination_address=data['destination_address'],
+        requested_datetime=requested_dt,
+        max_fare=data.get('max_fare'),
+        notes=data.get('notes', '')
+    )
+    
+    # Save estimated fare
+    prebook_request.estimated_fare = estimated_fare
+    
+    result = prebook_request.save()
+    
+    return jsonify({
+        "message": "Pre-booking request created successfully!",
+        "request_id": str(result.inserted_id),
+        "estimated_fare": estimated_fare,
+        "requested_datetime": requested_dt.isoformat()
+    }), 201
+
+@rides_bp.route('/prebook/nearby', methods=['POST'])
+@token_required
+@role_required('driver')
+def find_nearby_prebook_requests():
+    """Driver finds nearby pre-booking requests"""
+    data = request.get_json()
+    
+    if 'driver_location' not in data:
+        return jsonify({"error": "Driver location required"}), 400
+    
+    driver_coords = data['driver_location']
+    if not isinstance(driver_coords, list) or len(driver_coords) != 2:
+        return jsonify({"error": "Invalid location format"}), 400
+    
+    # Create GeoJSON point for driver location
+    driver_location = {
+        "type": "Point",
+        "coordinates": driver_coords
+    }
+    
+    # Find nearby requests (based on rider's home location)
+    max_distance = data.get('max_distance_km', 25)
+    nearby_requests = PreBookRequest.find_nearby_requests(driver_location, max_distance)
+    
+    # Format response
+    formatted_requests = []
+    for req in nearby_requests:
+        rider_info = req['rider_info']
+        rider_profile = req.get('rider_profile', [{}])[0] if req.get('rider_profile') else {}
+        
+        # Calculate time until ride
+        time_until = req['requested_datetime'] - datetime.datetime.utcnow()
+        hours_until = int(time_until.total_seconds() / 3600)
+        
+        # Calculate smart score for pre-booking (time + distance + rating)
+        distance_score = max(0, 100 - (req['distance_to_rider_home'] / 1000) * 5)  # Distance component
+        time_score = max(0, min(50, hours_until * 2))  # Time component (more points for sooner rides)
+        rating_score = rider_info.get('averageRating', 0) * 10  # Rating component
+        
+        smart_score = min(100, distance_score + time_score + rating_score)
+        
+        formatted_requests.append({
+            "request_id": str(req['_id']),
+            "rider": {
+                "name": rider_info['name'],
+                "rating": rider_info.get('averageRating', 0),
+                "home_distance_km": round(req['distance_to_rider_home'] / 1000, 2)
+            },
+            "pickup_address": req['pickup_address'],
+            "destination_address": req['destination_address'],
+            "pickup_coordinates": req['pickup_location']['coordinates'],
+            "destination_coordinates": req['destination_location']['coordinates'],
+            "requested_datetime": req['requested_datetime'].isoformat(),
+            "time_until_ride": f"{hours_until}h {int((time_until.total_seconds() % 3600) / 60)}m",
+            "estimated_fare": req.get('estimated_fare', 0),
+            "max_fare": req.get('max_fare'),
+            "notes": req.get('notes', ''),
+            "smart_score": round(smart_score),
+            "created_at": req['created_at'].isoformat()
+        })
+    
+    # Sort by smart score (highest first)
+    formatted_requests.sort(key=lambda x: x['smart_score'], reverse=True)
+    
+    return jsonify({
+        "prebook_requests": formatted_requests,
+        "total_found": len(formatted_requests)
+    }), 200
+
+@rides_bp.route('/prebook/accept/<request_id>', methods=['POST'])
+@token_required
+@role_required('driver')
+def accept_prebook_request(request_id):
+    """Driver accepts a pre-booking request"""
+    driver_id = request.current_user['user_id']
+    
+    # Find the request
+    prebook_req = mongo.db.prebook_requests.find_one({
+        "_id": ObjectId(request_id),
+        "status": "open"
+    })
+    
+    if not prebook_req:
+        return jsonify({"error": "Request not found or no longer available"}), 404
+    
+    # Check if driver already accepted this time slot
+    conflict_check = mongo.db.prebook_requests.find_one({
+        "matched_driver_id": ObjectId(driver_id),
+        "status": "matched",
+        "requested_datetime": {
+            "$gte": prebook_req['requested_datetime'] - datetime.timedelta(hours=1),
+            "$lte": prebook_req['requested_datetime'] + datetime.timedelta(hours=1)
+        }
+    })
+    
+    if conflict_check:
+        return jsonify({"error": "You already have a ride scheduled for this time"}), 409
+    
+    # Update request status
+    PreBookRequest.update_status(request_id, "matched", driver_id)
+    
+    # Get rider info for response
+    rider_info = mongo.db.users.find_one({"_id": prebook_req['rider_id']})
+    rider_profile = mongo.db.user_profiles.find_one({"user_id": prebook_req['rider_id']})
+    
+    return jsonify({
+        "message": "Pre-booking request accepted!",
+        "ride_datetime": prebook_req['requested_datetime'].isoformat(),
+        "rider": {
+            "name": rider_info.get('name', 'Unknown'),
+            "phone": rider_profile.get('phone_number', 'Not available') if rider_profile else 'Not available'
+        },
+        "pickup_address": prebook_req['pickup_address'],
+        "destination_address": prebook_req['destination_address'],
+        "estimated_fare": prebook_req.get('estimated_fare', 0)
+    }), 200
+
+@rides_bp.route('/prebook/my-requests', methods=['GET'])
+@token_required
+@role_required('rider')
+def get_my_prebook_requests():
+    """Get rider's pre-booking requests"""
+    rider_id = request.current_user['user_id']
+    
+    # Get requests with driver info (if matched)
+    pipeline = [
+        {
+            "$match": {"rider_id": ObjectId(rider_id)}
+        },
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "matched_driver_id",
+                "foreignField": "_id",
+                "as": "driver_info"
+            }
+        },
+        {
+            "$lookup": {
+                "from": "user_profiles",
+                "localField": "matched_driver_id",
+                "foreignField": "user_id",
+                "as": "driver_profile"
+            }
+        },
+        {
+            "$sort": {"requested_datetime": 1}
+        }
+    ]
+    
+    requests = list(mongo.db.prebook_requests.aggregate(pipeline))
+    
+    formatted_requests = []
+    for req in requests:
+        driver_info = req.get('driver_info', [{}])[0] if req.get('driver_info') else None
+        driver_profile = req.get('driver_profile', [{}])[0] if req.get('driver_profile') else {}
+        
+        request_data = {
+            "request_id": str(req['_id']),
+            "status": req['status'],
+            "pickup_address": req['pickup_address'],
+            "destination_address": req['destination_address'],
+            "requested_datetime": req['requested_datetime'].isoformat(),
+            "estimated_fare": req.get('estimated_fare', 0),
+            "max_fare": req.get('max_fare'),
+            "notes": req.get('notes', ''),
+            "created_at": req['created_at'].isoformat()
+        }
+        
+        if driver_info:
+            request_data['driver'] = {
+                "name": driver_info.get('name', 'Unknown'),
+                "phone": driver_profile.get('phone_number', 'Not available'),
+                "rating": driver_info.get('averageRating', 0)
+            }
+        
+        formatted_requests.append(request_data)
+    
+    return jsonify({
+        "prebook_requests": formatted_requests,
+        "total": len(formatted_requests)
+    }), 200
+
+@rides_bp.route('/prebook/my-accepted', methods=['GET'])
+@token_required
+@role_required('driver')
+def get_my_accepted_prebooks():
+    """Get driver's accepted pre-bookings"""
+    driver_id = request.current_user['user_id']
+    
+    # Get accepted requests with rider info
+    pipeline = [
+        {
+            "$match": {
+                "matched_driver_id": ObjectId(driver_id),
+                "status": "matched"
+            }
+        },
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "rider_id",
+                "foreignField": "_id",
+                "as": "rider_info"
+            }
+        },
+        {
+            "$lookup": {
+                "from": "user_profiles",
+                "localField": "rider_id",
+                "foreignField": "user_id",
+                "as": "rider_profile"
+            }
+        },
+        {
+            "$unwind": "$rider_info"
+        },
+        {
+            "$sort": {"requested_datetime": 1}
+        }
+    ]
+    
+    requests = list(mongo.db.prebook_requests.aggregate(pipeline))
+    
+    formatted_requests = []
+    for req in requests:
+        rider_profile = req.get('rider_profile', [{}])[0] if req.get('rider_profile') else {}
+        
+        formatted_requests.append({
+            "request_id": str(req['_id']),
+            "rider": {
+                "name": req['rider_info']['name'],
+                "phone": rider_profile.get('phone_number', 'Not available'),
+                "rating": req['rider_info'].get('averageRating', 0)
+            },
+            "pickup_address": req['pickup_address'],
+            "destination_address": req['destination_address'],
+            "requested_datetime": req['requested_datetime'].isoformat(),
+            "estimated_fare": req.get('estimated_fare', 0),
+            "notes": req.get('notes', ''),
+            "accepted_at": req.get('updated_at', req['created_at']).isoformat()
+        })
+    
+    return jsonify({
+        "accepted_prebooks": formatted_requests,
+        "total": len(formatted_requests)
+    }), 200
+
+@rides_bp.route('/prebook/cancel/<request_id>', methods=['POST'])
+@token_required
+def cancel_prebook_request(request_id):
+    """Cancel a pre-booking request (rider or driver)"""
+    user_id = request.current_user['user_id']
+    user_role = request.current_user['role']
+    
+    # Find the request
+    if user_role == 'rider':
+        prebook_req = mongo.db.prebook_requests.find_one({
+            "_id": ObjectId(request_id),
+            "rider_id": ObjectId(user_id)
+        })
+    else:  # driver
+        prebook_req = mongo.db.prebook_requests.find_one({
+            "_id": ObjectId(request_id),
+            "matched_driver_id": ObjectId(user_id)
+        })
+    
+    if not prebook_req:
+        return jsonify({"error": "Request not found"}), 404
+    
+    if prebook_req['status'] not in ['open', 'matched']:
+        return jsonify({"error": "Cannot cancel this request"}), 400
+    
+    # Update status
+    if user_role == 'rider':
+        PreBookRequest.update_status(request_id, "cancelled")
+    else:  # driver cancelling - reset to open
+        mongo.db.prebook_requests.update_one(
+            {"_id": ObjectId(request_id)},
+            {
+                "$set": {
+                    "status": "open",
+                    "updated_at": datetime.datetime.utcnow()
+                },
+                "$unset": {"matched_driver_id": ""}
+            }
+        )
+    
+    return jsonify({"message": "Pre-booking request cancelled successfully"}), 200
 

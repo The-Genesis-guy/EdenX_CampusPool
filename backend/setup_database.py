@@ -7,7 +7,7 @@ Run this once after setting up your MongoDB connection.
 
 import os
 import sys
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING, DESCENDING
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -32,8 +32,10 @@ def setup_database():
         print(f"Database: {db.name}")
         
         # Create collections if they don't exist
-        collections_to_create = ['users', 'rides', 'ride_requests', 'user_profiles']
-        
+        collections_to_create = [
+                    'users', 'rides', 'ride_requests', 'user_profiles', 
+                    'ride_history', 'ratings', 'notifications', 'prebook_requests'  # ADD THIS
+                ]        
         for collection_name in collections_to_create:
             if collection_name not in db.list_collection_names():
                 db.create_collection(collection_name)
@@ -56,6 +58,54 @@ def setup_database():
         db.ride_requests.create_index([("pickup_location", "2dsphere")])
         print("✓ Created 2dsphere index on ride_requests.pickup_location")
         
+        # Create performance indexes
+        print("\n⚡ Creating performance indexes...")
+        
+        # CRITICAL: Index for finding active rides by driver
+        try:
+            db.rides.create_index([("driver_id", ASCENDING), ("status", ASCENDING)])
+            print("✓ Created compound index on rides.driver_id + rides.status")
+        except Exception as e:
+            print(f"! Index may already exist: {e}")
+        
+        # CRITICAL: Index for finding ride requests by status
+        try:
+            db.ride_requests.create_index([("driver_id", ASCENDING), ("status", ASCENDING)])
+            print("✓ Created compound index on ride_requests.driver_id + ride_requests.status")
+        except Exception as e:
+            print(f"! Index may already exist: {e}")
+        
+        try:
+            db.ride_requests.create_index([("rider_id", ASCENDING), ("status", ASCENDING)])
+            print("✓ Created compound index on ride_requests.rider_id + ride_requests.status")
+        except Exception as e:
+            print(f"! Index may already exist: {e}")
+        
+        # Pre-booking indexes (PHASE 3)
+        try:
+            db.prebook_requests.create_index([("rider_id", ASCENDING), ("status", ASCENDING)])
+            print("✓ Created compound index on prebook_requests.rider_id + status")
+        except Exception as e:
+            print(f"! Pre-booking rider index may already exist: {e}")
+            
+        try:
+            db.prebook_requests.create_index([("matched_driver_id", ASCENDING), ("status", ASCENDING)])
+            print("✓ Created compound index on prebook_requests.matched_driver_id + status")
+        except Exception as e:
+            print(f"! Pre-booking driver index may already exist: {e}")
+            
+        try:
+            db.prebook_requests.create_index([("requested_datetime", ASCENDING)])
+            print("✓ Created index on prebook_requests.requested_datetime")
+        except Exception as e:
+            print(f"! Pre-booking datetime index may already exist: {e}")
+            
+        try:
+            db.prebook_requests.create_index([("status", ASCENDING), ("requested_datetime", ASCENDING)])
+            print("✓ Created compound index on prebook_requests.status + requested_datetime")
+        except Exception as e:
+            print(f"! Pre-booking status+datetime index may already exist: {e}")
+
         # Create additional useful indexes
         print("\nCreating additional indexes...")
         

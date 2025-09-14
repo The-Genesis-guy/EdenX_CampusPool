@@ -103,7 +103,10 @@ function initializeEventListeners() {
     document.getElementById('college-location-btn').addEventListener('click', setCollegeDestination);
     
     // Search button
-    document.getElementById('search-rides-btn').addEventListener('click', searchForRides);
+    document.getElementById('search-rides-btn').addEventListener('click', () => {
+        resetToInstantRides();
+        searchForRides();
+    });
     
     // View toggle
     document.getElementById('map-view-btn').addEventListener('click', () => switchView('map'));
@@ -119,6 +122,11 @@ function initializeEventListeners() {
     // Active ride modal buttons
     document.getElementById('close-active-ride-modal').addEventListener('click', closeActiveRideModal);
     document.getElementById('cancel-ride-btn').addEventListener('click', cancelActiveRide);
+    // Pre-booking buttons
+    document.getElementById('prebook-btn').addEventListener('click', () => switchToPreBooking());
+    document.getElementById('my-prebooks-btn').addEventListener('click', () => showMyPreBookings());
+    document.getElementById('create-prebook-btn').addEventListener('click', createPreBooking);
+    document.getElementById('refresh-prebooks-btn').addEventListener('click', loadMyPreBookings);
 }
 
 // Check for active ride on page load
@@ -1145,4 +1153,247 @@ function showEnhancedNotification(message, type, playSound = true) {
             }
         }
     }
+}
+
+
+// ===============================
+// PRE-BOOKING FUNCTIONS (PHASE 3)
+// ===============================
+
+function switchToPreBooking() {
+    // Hide other sections
+    document.getElementById('view-toggle').classList.add('hidden');
+    document.getElementById('drivers-section').classList.add('hidden');
+    document.getElementById('map-container').classList.add('hidden');
+    document.getElementById('my-prebooks-section').classList.add('hidden');
+    
+    // Show pre-booking section
+    document.getElementById('prebook-section').classList.remove('hidden');
+    
+    // Set minimum datetime to now + 1 hour
+    const now = new Date();
+    now.setHours(now.getHours() + 1);
+    const minDateTime = now.toISOString().slice(0, 16);
+    document.getElementById('prebook-datetime').min = minDateTime;
+    
+    // Update button states
+    document.getElementById('search-rides-btn').classList.remove('btn-primary');
+    document.getElementById('search-rides-btn').classList.add('btn-outline');
+    document.getElementById('prebook-btn').classList.remove('btn-outline');
+    document.getElementById('prebook-btn').classList.add('btn-primary');
+    document.getElementById('my-prebooks-btn').classList.remove('btn-primary');
+    document.getElementById('my-prebooks-btn').classList.add('btn-outline');
+    
+    showStatus('📅 Schedule a ride for later - perfect for early classes or late library sessions!', 'info');
+}
+
+function showMyPreBookings() {
+    // Hide other sections
+    document.getElementById('view-toggle').classList.add('hidden');
+    document.getElementById('drivers-section').classList.add('hidden');
+    document.getElementById('map-container').classList.add('hidden');
+    document.getElementById('prebook-section').classList.add('hidden');
+    
+    // Show my pre-bookings section
+    document.getElementById('my-prebooks-section').classList.remove('hidden');
+    
+    // Update button states
+    document.getElementById('search-rides-btn').classList.remove('btn-primary');
+    document.getElementById('search-rides-btn').classList.add('btn-outline');
+    document.getElementById('prebook-btn').classList.remove('btn-primary');
+    document.getElementById('prebook-btn').classList.add('btn-outline');
+    document.getElementById('my-prebooks-btn').classList.remove('btn-outline');
+    document.getElementById('my-prebooks-btn').classList.add('btn-primary');
+    
+    loadMyPreBookings();
+}
+
+async function createPreBooking() {
+    if (!pickupCoordinates || !destinationCoordinates) {
+        showStatus('Please select pickup and destination locations first', 'error');
+        return;
+    }
+    
+    const datetime = document.getElementById('prebook-datetime').value;
+    if (!datetime) {
+        showStatus('Please select when you need the ride', 'error');
+        return;
+    }
+    
+    const maxFare = document.getElementById('max-fare').value;
+    const notes = document.getElementById('ride-notes').value;
+    
+    try {
+        showLoading(true);
+        
+        const requestData = {
+            pickup_location: pickupCoordinates,
+            destination_location: destinationCoordinates,
+            pickup_address: document.getElementById('pickup-input').value,
+            destination_address: document.getElementById('destination-input').value,
+            requested_datetime: new Date(datetime).toISOString()
+        };
+        
+        if (maxFare) {
+            requestData.max_fare = parseInt(maxFare);
+        }
+        
+        if (notes.trim()) {
+            requestData.notes = notes.trim();
+        }
+        
+        const response = await apiCall('/rides/prebook/request', 'POST', requestData);
+        
+        showEnhancedNotification('🎉 Pre-booking request created! Drivers can now see and accept it.', 'success');
+        
+        // Clear form
+        document.getElementById('prebook-datetime').value = '';
+        document.getElementById('max-fare').value = '';
+        document.getElementById('ride-notes').value = '';
+        
+        // Show estimated fare
+        showStatus(`📅 Request created! Estimated fare: ₹${response.estimated_fare}. Check "My Requests" for updates.`, 'success');
+        
+    } catch (error) {
+        console.error('Failed to create pre-booking:', error);
+        showStatus(error.message || 'Failed to create pre-booking request. Please try again.', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function loadMyPreBookings() {
+    try {
+        const response = await apiCall('/rides/prebook/my-requests');
+        displayMyPreBookings(response.prebook_requests || []);
+        
+    } catch (error) {
+        console.error('Failed to load pre-bookings:', error);
+        showStatus('Failed to load pre-bookings. Please try again.', 'error');
+    }
+}
+
+function displayMyPreBookings(requests) {
+    const container = document.getElementById('prebooks-list');
+    const noRequestsEl = document.getElementById('no-prebooks');
+    
+    if (requests.length === 0) {
+        container.innerHTML = '';
+        noRequestsEl.classList.remove('hidden');
+        return;
+    }
+    
+    noRequestsEl.classList.add('hidden');
+    container.innerHTML = '';
+    
+    requests.forEach(request => {
+        const card = createPreBookingCard(request);
+        container.appendChild(card);
+    });
+}
+
+function createPreBookingCard(request) {
+    const card = document.createElement('div');
+    card.className = 'driver-card';
+    
+    // Format datetime
+    const requestDate = new Date(request.requested_datetime);
+    const formattedDate = requestDate.toLocaleDateString('en-IN', { 
+        weekday: 'short', 
+        month: 'short', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    
+    // Status styling
+    const statusColors = {
+        'open': '#f59e0b',
+        'matched': '#10b981',
+        'cancelled': '#6b7280',
+        'expired': '#ef4444'
+    };
+    
+    const statusLabels = {
+        'open': '🟡 Looking for Driver',
+        'matched': '✅ Driver Matched',
+        'cancelled': '❌ Cancelled',
+        'expired': '⏰ Expired'
+    };
+    
+    card.innerHTML = `
+        <div class="driver-header">
+            <div class="driver-info">
+                <h4>📅 ${formattedDate}</h4>
+                <div style="color: ${statusColors[request.status]}; font-weight: 600; margin-top: 0.25rem;">
+                    ${statusLabels[request.status]}
+                </div>
+            </div>
+            <div class="smart-score" style="background: ${statusColors[request.status]};">
+                ₹${request.estimated_fare}
+            </div>
+        </div>
+        
+        <div class="driver-details">
+            <p><strong>📍 From:</strong> ${request.pickup_address}</p>
+            <p><strong>🎯 To:</strong> ${request.destination_address}</p>
+            ${request.max_fare ? `<p><strong>💰 Max Fare:</strong> ₹${request.max_fare}</p>` : ''}
+            ${request.notes ? `<p><strong>📝 Notes:</strong> ${request.notes}</p>` : ''}
+            ${request.driver ? `
+                <div style="background: #dcfce7; padding: 0.75rem; border-radius: 0.5rem; margin-top: 0.5rem;">
+                    <p style="margin: 0;"><strong>🚗 Driver:</strong> ${request.driver.name}</p>
+                    <p style="margin: 0;"><strong>📞 Phone:</strong> <a href="tel:${request.driver.phone}">${request.driver.phone}</a></p>
+                    <p style="margin: 0;"><strong>⭐ Rating:</strong> ${request.driver.rating.toFixed(1)}/5.0</p>
+                </div>
+            ` : ''}
+        </div>
+        
+        <div class="driver-footer">
+            ${request.status === 'open' || request.status === 'matched' ? `
+                <button class="btn btn-danger" onclick="cancelPreBooking('${request.request_id}')">
+                    Cancel Request
+                </button>
+            ` : ''}
+            ${request.status === 'matched' ? `
+                <div style="background: #dcfce7; color: #166534; padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: 600; text-align: center; flex: 1; margin-left: 0.5rem;">
+                    Ready for ride time!
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    return card;
+}
+
+window.cancelPreBooking = async function(requestId) {
+    if (!confirm('Are you sure you want to cancel this pre-booking request?')) {
+        return;
+    }
+    
+    try {
+        await apiCall(`/rides/prebook/cancel/${requestId}`, 'POST');
+        showStatus('Pre-booking request cancelled successfully', 'info');
+        loadMyPreBookings(); // Refresh the list
+        
+    } catch (error) {
+        console.error('Failed to cancel pre-booking:', error);
+        showStatus('Failed to cancel request. Please try again.', 'error');
+    }
+};
+
+// Update the search rides button to reset view
+function resetToInstantRides() {
+    // Hide pre-booking sections
+    document.getElementById('prebook-section').classList.add('hidden');
+    document.getElementById('my-prebooks-section').classList.add('hidden');
+    
+    // Reset button states
+    document.getElementById('search-rides-btn').classList.remove('btn-outline');
+    document.getElementById('search-rides-btn').classList.add('btn-primary');
+    document.getElementById('prebook-btn').classList.remove('btn-primary');
+    document.getElementById('prebook-btn').classList.add('btn-outline');
+    document.getElementById('my-prebooks-btn').classList.remove('btn-primary');
+    document.getElementById('my-prebooks-btn').classList.add('btn-outline');
+    
+    hideStatus();
 }

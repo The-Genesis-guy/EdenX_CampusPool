@@ -125,27 +125,61 @@ async function checkForActiveRide() {
 // Initialize event listeners
 function initializeEventListeners() {
     // Toggle switch
-    document.getElementById('online-toggle').addEventListener('click', toggleOnlineStatus);
+    const onlineToggle = document.getElementById('online-toggle');
+    if (onlineToggle) {
+        onlineToggle.addEventListener('click', toggleOnlineStatus);
+    }
     
     // Location buttons
-    document.getElementById('current-location-btn').addEventListener('click', getCurrentLocation);
-    document.getElementById('college-location-btn').addEventListener('click', setCollegeDestination);
+    const currentLocationBtn = document.getElementById('current-location-btn');
+    if (currentLocationBtn) {
+        currentLocationBtn.addEventListener('click', getCurrentLocation);
+    }
+    
+    const collegeLocationBtn = document.getElementById('college-location-btn');
+    if (collegeLocationBtn) {
+        collegeLocationBtn.addEventListener('click', setCollegeDestination);
+    }
     
     // Start ride button
-    document.getElementById('start-ride-btn').addEventListener('click', startAcceptingRequests);
+    const startRideBtn = document.getElementById('start-ride-btn');
+    if (startRideBtn) {
+        startRideBtn.addEventListener('click', startAcceptingRequests);
+    }
     
     // Refresh requests
-    document.getElementById('refresh-requests-btn').addEventListener('click', loadRideRequests);
+    const refreshRequestsBtn = document.getElementById('refresh-requests-btn');
+    if (refreshRequestsBtn) {
+        refreshRequestsBtn.addEventListener('click', loadRideRequests);
+    }
     
     // Profile form
-    document.getElementById('profile-form').addEventListener('submit', handleProfileSubmit);
+    const profileForm = document.getElementById('profile-form');
+    if (profileForm) {
+        profileForm.addEventListener('submit', handleProfileSubmit);
+    }
     
     // OTP modal
-    document.getElementById('close-otp-modal').addEventListener('click', closeOtpModal);
+    const closeOtpModal = document.getElementById('close-otp-modal');
+    if (closeOtpModal) {
+        closeOtpModal.addEventListener('click', closeOtpModal);
+    }
     
-    // OTP verification
-    document.getElementById('verify-otp-btn')?.addEventListener('click', verifyOTP);
-    document.getElementById('complete-ride-btn')?.addEventListener('click', completeRide);
+    // Pre-booking marketplace (optional - only if element exists)
+    const viewPreBooksBtn = document.getElementById('view-prebooks-btn');
+    if (viewPreBooksBtn) {
+        viewPreBooksBtn.addEventListener('click', showPreBookingMarketplace);
+    }
+    
+    const browsePreBooksBtn = document.getElementById('browse-prebooks-btn');
+    if (browsePreBooksBtn) {
+        browsePreBooksBtn.addEventListener('click', loadPreBookingRequests);
+    }
+    
+    const myAcceptedPreBooksBtn = document.getElementById('my-accepted-prebooks-btn');
+    if (myAcceptedPreBooksBtn) {
+        myAcceptedPreBooksBtn.addEventListener('click', loadMyAcceptedPreBooks);
+    }
 }
 
 // Initialize Google Maps autocomplete
@@ -820,3 +854,277 @@ function stopLocationTracking() {
         console.log('📍 Location tracking stopped');
     }
 }
+
+// ===============================
+// PRE-BOOKING MARKETPLACE (PHASE 3)
+// ===============================
+
+function showPreBookingMarketplace() {
+    // Hide other sections
+    document.getElementById('requests-section').classList.add('hidden');
+    document.getElementById('active-ride-section').classList.add('hidden');
+    
+    // Show pre-booking marketplace
+    document.getElementById('prebook-marketplace-section').classList.remove('hidden');
+    
+    showStatus('📅 Browse future ride requests and plan your schedule!', 'info');
+    loadPreBookingRequests();
+}
+
+async function loadPreBookingRequests() {
+    if (!currentLocation) {
+        getCurrentLocation();
+        setTimeout(loadPreBookingRequests, 2000);
+        return;
+    }
+    
+    try {
+        // Show browse section, hide schedule
+        document.getElementById('prebook-requests-list').classList.remove('hidden');
+        document.getElementById('my-accepted-list').classList.add('hidden');
+        
+        // Update button states
+        document.getElementById('browse-prebooks-btn').classList.remove('btn-outline');
+        document.getElementById('browse-prebooks-btn').classList.add('btn-primary');
+        document.getElementById('my-accepted-prebooks-btn').classList.remove('btn-primary');
+        document.getElementById('my-accepted-prebooks-btn').classList.add('btn-outline');
+        
+        const response = await apiCall('/rides/prebook/nearby', 'POST', {
+            driver_location: currentLocation,
+            max_distance_km: 25
+        });
+        
+        displayPreBookingRequests(response.prebook_requests || []);
+        
+    } catch (error) {
+        console.error('Failed to load pre-booking requests:', error);
+        showStatus('Failed to load pre-booking requests. Please try again.', 'error');
+    }
+}
+
+async function loadMyAcceptedPreBooks() {
+    try {
+        // Show schedule section, hide browse
+        document.getElementById('prebook-requests-list').classList.add('hidden');
+        document.getElementById('my-accepted-list').classList.remove('hidden');
+        
+        // Update button states
+        document.getElementById('browse-prebooks-btn').classList.remove('btn-primary');
+        document.getElementById('browse-prebooks-btn').classList.add('btn-outline');
+        document.getElementById('my-accepted-prebooks-btn').classList.remove('btn-outline');
+        document.getElementById('my-accepted-prebooks-btn').classList.add('btn-primary');
+        
+        const response = await apiCall('/rides/prebook/my-accepted');
+        displayMyAcceptedPreBooks(response.accepted_prebooks || []);
+        
+    } catch (error) {
+        console.error('Failed to load accepted pre-bookings:', error);
+        showStatus('Failed to load your schedule. Please try again.', 'error');
+    }
+}
+
+function displayPreBookingRequests(requests) {
+    const container = document.getElementById('prebook-requests-list');
+    const noRequestsEl = document.getElementById('no-prebook-requests');
+    
+    if (requests.length === 0) {
+        container.innerHTML = '';
+        noRequestsEl.classList.remove('hidden');
+        return;
+    }
+    
+    noRequestsEl.classList.add('hidden');
+    container.innerHTML = '';
+    
+    requests.forEach(request => {
+        const card = createPreBookingRequestCard(request);
+        container.appendChild(card);
+    });
+}
+
+function createPreBookingRequestCard(request) {
+    const card = document.createElement('div');
+    card.className = 'request-card';
+    
+    // Format datetime
+    const requestDate = new Date(request.requested_datetime);
+    const formattedDate = requestDate.toLocaleDateString('en-IN', { 
+        weekday: 'short', 
+        month: 'short', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    
+    // Calculate urgency color
+    const hoursUntil = (requestDate - new Date()) / (1000 * 60 * 60);
+    let urgencyColor = '#10b981'; // green
+    if (hoursUntil < 12) urgencyColor = '#f59e0b'; // yellow
+    if (hoursUntil < 4) urgencyColor = '#ef4444'; // red
+    
+    card.innerHTML = `
+        <div class="request-header">
+            <div class="rider-info">
+                <h4>${request.rider.name}</h4>
+                <div class="driver-rating">
+                    ⭐ ${request.rider.rating.toFixed(1)} • 🏠 ${request.rider.home_distance_km}km away
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <div style="background: ${urgencyColor}; color: white; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold; margin-bottom: 0.25rem;">
+                    ${request.time_until_ride}
+                </div>
+                <div style="background: var(--primary-color); color: white; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold;">
+                    Score: ${request.smart_score}/100
+                </div>
+            </div>
+        </div>
+        
+        <div class="request-details">
+            <div style="background: var(--background-color); padding: 1rem; border-radius: 0.5rem; margin: 0.75rem 0;">
+                <p style="margin: 0 0 0.5rem 0;"><strong>📅 When:</strong> ${formattedDate}</p>
+                <p style="margin: 0 0 0.5rem 0;"><strong>📍 From:</strong> ${request.pickup_address}</p>
+                <p style="margin: 0 0 0.5rem 0;"><strong>🎯 To:</strong> ${request.destination_address}</p>
+                <p style="margin: 0;"><strong>💰 Fare:</strong> ₹${request.estimated_fare}${request.max_fare ? ` (max ₹${request.max_fare})` : ''}</p>
+                ${request.notes ? `<p style="margin: 0.5rem 0 0 0;"><strong>📝 Note:</strong> <em>${request.notes}</em></p>` : ''}
+            </div>
+        </div>
+        
+        <div class="request-actions">
+            <button class="btn btn-danger" onclick="declinePreBooking('${request.request_id}')">
+                Pass
+            </button>
+            <button class="btn btn-secondary" onclick="acceptPreBooking('${request.request_id}')">
+                Accept Pre-Booking
+            </button>
+        </div>
+    `;
+    
+    return card;
+}
+
+function displayMyAcceptedPreBooks(prebooks) {
+    const container = document.getElementById('my-accepted-list');
+    
+    if (prebooks.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <h3>No scheduled rides</h3>
+                <p>Browse the marketplace to accept pre-booking requests and plan your schedule.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = '';
+    
+    prebooks.forEach(prebook => {
+        const card = createAcceptedPreBookCard(prebook);
+        container.appendChild(card);
+    });
+}
+
+function createAcceptedPreBookCard(prebook) {
+    const card = document.createElement('div');
+    card.className = 'request-card';
+    
+    // Format datetime
+    const requestDate = new Date(prebook.requested_datetime);
+    const formattedDate = requestDate.toLocaleDateString('en-IN', { 
+        weekday: 'long', 
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    
+    // Calculate time until ride
+    const timeUntil = requestDate - new Date();
+    const hoursUntil = Math.floor(timeUntil / (1000 * 60 * 60));
+    const daysUntil = Math.floor(hoursUntil / 24);
+    
+    let timeDisplay = '';
+    if (daysUntil > 0) {
+        timeDisplay = `in ${daysUntil} day${daysUntil > 1 ? 's' : ''}`;
+    } else if (hoursUntil > 0) {
+        timeDisplay = `in ${hoursUntil} hour${hoursUntil > 1 ? 's' : ''}`;
+    } else {
+        timeDisplay = 'very soon!';
+    }
+    
+    card.innerHTML = `
+        <div class="request-header">
+            <div class="rider-info">
+                <h4>📅 ${formattedDate}</h4>
+                <div style="color: var(--secondary-color); font-weight: 600; margin-top: 0.25rem;">
+                    ✅ Confirmed - ${timeDisplay}
+                </div>
+            </div>
+            <div style="background: var(--secondary-color); color: white; padding: 0.5rem 0.75rem; border-radius: 0.5rem; font-weight: bold;">
+                ₹${prebook.estimated_fare}
+            </div>
+        </div>
+        
+        <div class="request-details">
+            <div style="background: var(--background-color); padding: 1rem; border-radius: 0.5rem; margin: 0.75rem 0;">
+                <p style="margin: 0 0 0.5rem 0;"><strong>👤 Rider:</strong> ${prebook.rider.name} (⭐ ${prebook.rider.rating.toFixed(1)})</p>
+                <p style="margin: 0 0 0.5rem 0;"><strong>📞 Phone:</strong> <a href="tel:${prebook.rider.phone}">${prebook.rider.phone}</a></p>
+                <p style="margin: 0 0 0.5rem 0;"><strong>📍 From:</strong> ${prebook.pickup_address}</p>
+                <p style="margin: 0;"><strong>🎯 To:</strong> ${prebook.destination_address}</p>
+                ${prebook.notes ? `<p style="margin: 0.5rem 0 0 0;"><strong>📝 Note:</strong> <em>${prebook.notes}</em></p>` : ''}
+            </div>
+        </div>
+        
+        <div class="request-actions">
+            <button class="btn btn-danger" onclick="cancelAcceptedPreBook('${prebook.request_id}')">
+                Cancel Booking
+            </button>
+            <button class="btn btn-outline" onclick="setReminderForRide('${prebook.request_id}')">
+                📱 Set Reminder
+            </button>
+        </div>
+    `;
+    
+    return card;
+}
+
+window.acceptPreBooking = async function(requestId) {
+    try {
+        const response = await apiCall(`/rides/prebook/accept/${requestId}`, 'POST');
+        
+        showEnhancedNotification('🎉 Pre-booking accepted! Added to your schedule.', 'success');
+        
+        // Refresh the marketplace
+        loadPreBookingRequests();
+        
+    } catch (error) {
+        console.error('Failed to accept pre-booking:', error);
+        showStatus(error.message || 'Failed to accept pre-booking. Please try again.', 'error');
+    }
+};
+
+window.declinePreBooking = async function(requestId) {
+    // Just remove from view - no API call needed for decline
+    showStatus('Request passed. Browse more opportunities below.', 'info');
+    loadPreBookingRequests();
+};
+
+window.cancelAcceptedPreBook = async function(requestId) {
+    if (!confirm('Are you sure you want to cancel this accepted pre-booking? The rider will be notified.')) {
+        return;
+    }
+    
+    try {
+        await apiCall(`/rides/prebook/cancel/${requestId}`, 'POST');
+        showStatus('Pre-booking cancelled. It will return to the marketplace for other drivers.', 'info');
+        loadMyAcceptedPreBooks();
+        
+    } catch (error) {
+        console.error('Failed to cancel pre-booking:', error);
+        showStatus('Failed to cancel. Please try again.', 'error');
+    }
+};
+
+window.setReminderForRide = function(requestId) {
+    showStatus('📱 Set a phone reminder for this ride time! Feature coming soon.', 'info');
+};

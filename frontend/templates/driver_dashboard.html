@@ -84,6 +84,35 @@
 
             <!-- Ride Requests Section -->
             <section id="requests-section" class="hidden">
+                <!-- Pre-Booking Marketplace Section -->
+            <section id="prebook-marketplace-section" class="hidden">
+                <div class="location-section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h3>📅 Pre-Booking Marketplace</h3>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button id="browse-prebooks-btn" class="btn btn-outline" style="padding: 0.5rem 1rem;">
+                                🔍 Browse
+                            </button>
+                            <button id="my-accepted-prebooks-btn" class="btn btn-outline" style="padding: 0.5rem 1rem;">
+                                📋 My Schedule
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="prebook-requests-list" class="requests-list">
+                        <!-- Pre-booking request cards will be populated here -->
+                    </div>
+                    
+                    <div id="my-accepted-list" class="requests-list hidden">
+                        <!-- Accepted pre-bookings will be populated here -->
+                    </div>
+                    
+                    <div id="no-prebook-requests" class="empty-state hidden">
+                        <h3>No pre-booking requests</h3>
+                        <p>Check back later for upcoming ride requests from students.</p>
+                    </div>
+                </div>
+            </section>
                 <div class="location-section">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                         <h3>Ride Requests</h3>
