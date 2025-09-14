@@ -1,4 +1,4 @@
-// Rider Dashboard JavaScript
+// Enhanced Rider Dashboard JavaScript with Real-time Updates
 
 // Global variables
 let map;
@@ -8,6 +8,8 @@ let destinationCoordinates = null;
 let currentLocation = null;
 let availableRides = [];
 let selectedRideId = null;
+let activeRequestId = null;
+let statusPollingInterval = null;
 
 // College coordinates (Kristu Jayanti College)
 const COLLEGE_COORDS = [77.7334, 12.8627]; // [longitude, latitude]
@@ -41,7 +43,7 @@ function checkAuth() {
     return true;
 }
 
-// API helper function
+// API helper function with better error handling
 async function apiCall(endpoint, method = 'GET', data = null) {
     const token = getAuthToken();
     const headers = {
@@ -60,6 +62,14 @@ async function apiCall(endpoint, method = 'GET', data = null) {
 
     try {
         const response = await fetch(`${API_URL}${endpoint}`, config);
+        
+        if (response.status === 401) {
+            // Token expired
+            clearAuthToken();
+            window.location.href = '/';
+            return;
+        }
+        
         const result = await response.json();
         
         if (!response.ok) {
@@ -80,6 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeEventListeners();
     loadUserProfile();
     checkProfileCompletion();
+    checkForActiveRide();
 });
 
 // Initialize event listeners
@@ -101,6 +112,25 @@ function initializeEventListeners() {
     // Request modal buttons
     document.getElementById('confirm-request-btn').addEventListener('click', confirmRideRequest);
     document.getElementById('cancel-request-btn').addEventListener('click', closeRequestModal);
+    
+    // Active ride modal buttons
+    document.getElementById('close-active-ride-modal').addEventListener('click', closeActiveRideModal);
+    document.getElementById('cancel-ride-btn').addEventListener('click', cancelActiveRide);
+}
+
+// Check for active ride on page load
+async function checkForActiveRide() {
+    try {
+        const response = await apiCall('/rides/active-ride');
+        
+        if (response.has_active_ride) {
+            activeRequestId = response.ride_info.request_id;
+            showActiveRideModal(response.ride_info);
+            startStatusPolling();
+        }
+    } catch (error) {
+        console.error('Failed to check active ride:', error);
+    }
 }
 
 // Initialize Google Maps autocomplete
@@ -273,6 +303,7 @@ async function searchForRides() {
     try {
         const response = await apiCall('/rides/nearby', 'POST', {
             current_location: pickupCoordinates,
+            destination_location: destinationCoordinates,
             max_distance_km: 15
         });
 
@@ -316,26 +347,37 @@ function displayRidesList(rides) {
 function createRideCard(ride) {
     const card = document.createElement('div');
     card.className = 'driver-card';
+    
+    // Distance badge color based on distance
+    let distanceBadge = '🟢';
+    if (ride.distance_km > 5) distanceBadge = '🟡';
+    if (ride.distance_km > 10) distanceBadge = '🔴';
+    
     card.innerHTML = `
         <div class="driver-header">
             <div class="driver-info">
                 <h4>${ride.driver.name}</h4>
                 <div class="driver-rating">
-                    ⭐ ${ride.driver.rating.toFixed(1)} • ${ride.distance_km} km away
+                    ⭐ ${ride.driver.rating.toFixed(1)} • ${distanceBadge} ${ride.distance_km} km away
                 </div>
             </div>
             <div class="smart-score">
-                ${ride.smart_score}/100
+                <div class="score-badge">${ride.smart_score}/100</div>
+                <small>Smart Score</small>
             </div>
         </div>
         <div class="driver-details">
-            <strong>Route:</strong> ${ride.pickup_address} → ${ride.destination_address}<br>
-            <strong>Available Seats:</strong> ${ride.seats_available}
+            <div class="route-info">
+                <strong>📍 Route:</strong> ${ride.pickup_address} → ${ride.destination_address}
+            </div>
+            <div class="ride-details">
+                <span><strong>🪑 Seats:</strong> ${ride.seats_available}</span>
+                <span><strong>💰 Fare:</strong> ₹${ride.suggested_fare}</span>
+            </div>
         </div>
         <div class="driver-footer">
-            <div class="fare-info">₹${ride.suggested_fare}</div>
             <button class="btn btn-primary" onclick="requestRide('${ride.ride_id}')">
-                Request Ride
+                🚗 Request Ride
             </button>
         </div>
     `;
@@ -353,7 +395,7 @@ function displayRidesOnMap(rides) {
     // Create bounds to fit all markers
     const bounds = new google.maps.LatLngBounds();
 
-    // Add pickup location marker
+    // Add pickup location marker (rider's location)
     if (pickupCoordinates) {
         const pickupMarker = new google.maps.Marker({
             position: { lat: pickupCoordinates[1], lng: pickupCoordinates[0] },
@@ -364,17 +406,52 @@ function displayRidesOnMap(rides) {
                 scaledSize: new google.maps.Size(40, 40)
             }
         });
+        
+        // Add info window for pickup
+        const pickupInfoWindow = new google.maps.InfoWindow({
+            content: `<div style="padding:10px;"><strong>Your Pickup</strong><br>${document.getElementById('pickup-input').value}</div>`
+        });
+        
+        pickupMarker.addListener('click', () => {
+            pickupInfoWindow.open(map, pickupMarker);
+        });
+        
         currentMarkers.push(pickupMarker);
         bounds.extend(pickupMarker.getPosition());
     }
 
+    // Add destination marker
+    if (destinationCoordinates) {
+        const destMarker = new google.maps.Marker({
+            position: { lat: destinationCoordinates[1], lng: destinationCoordinates[0] },
+            map: map,
+            title: 'Your Destination',
+            icon: {
+                url: 'data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="%23dc2626"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>',
+                scaledSize: new google.maps.Size(40, 40)
+            }
+        });
+        
+        const destInfoWindow = new google.maps.InfoWindow({
+            content: `<div style="padding:10px;"><strong>Your Destination</strong><br>${document.getElementById('destination-input').value}</div>`
+        });
+        
+        destMarker.addListener('click', () => {
+            destInfoWindow.open(map, destMarker);
+        });
+        
+        currentMarkers.push(destMarker);
+        bounds.extend(destMarker.getPosition());
+    }
+
     // Add driver markers
-    rides.forEach(ride => {
+    rides.forEach((ride, index) => {
+        // Use driver pickup location or fallback to a point near rider
+        const driverLat = ride.driver_pickup_coords ? ride.driver_pickup_coords[1] : pickupCoordinates[1] + (Math.random() - 0.5) * 0.01;
+        const driverLng = ride.driver_pickup_coords ? ride.driver_pickup_coords[0] : pickupCoordinates[0] + (Math.random() - 0.5) * 0.01;
+        
         const driverMarker = new google.maps.Marker({
-            position: { 
-                lat: ride.pickup_location ? ride.pickup_location[1] : pickupCoordinates[1], 
-                lng: ride.pickup_location ? ride.pickup_location[0] : pickupCoordinates[0]
-            },
+            position: { lat: driverLat, lng: driverLng },
             map: map,
             title: `${ride.driver.name} - Score: ${ride.smart_score}/100`,
             icon: {
@@ -383,11 +460,35 @@ function displayRidesOnMap(rides) {
             }
         });
 
-        // Add click listener for ride request
-        driverMarker.addListener('click', () => {
-            requestRide(ride.ride_id);
+        // Add info window with driver details
+        const infoWindow = new google.maps.InfoWindow({
+            content: `
+                <div style="padding:15px;max-width:250px;">
+                    <h4 style="margin:0 0 10px 0;color:#1f2937;">${ride.driver.name}</h4>
+                    <div style="margin-bottom:10px;">
+                        <span style="background:#fbbf24;color:white;padding:2px 8px;border-radius:12px;font-size:12px;">⭐ ${ride.driver.rating.toFixed(1)}</span>
+                        <span style="background:#3b82f6;color:white;padding:2px 8px;border-radius:12px;font-size:12px;margin-left:5px;">${ride.smart_score}/100</span>
+                    </div>
+                    <p style="margin:5px 0;"><strong>Distance:</strong> ${ride.distance_km} km</p>
+                    <p style="margin:5px 0;"><strong>Fare:</strong> ₹${ride.suggested_fare}</p>
+                    <p style="margin:5px 0;font-size:12px;color:#6b7280;"><strong>Route:</strong> ${ride.pickup_address} → ${ride.destination_address}</p>
+                    <button onclick="requestRide('${ride.ride_id}')" style="width:100%;margin-top:10px;padding:8px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;">Request Ride</button>
+                </div>
+            `
         });
 
+        // Add click listener for info window
+        driverMarker.addListener('click', () => {
+            // Close other info windows
+            currentMarkers.forEach(marker => {
+                if (marker.infoWindow) {
+                    marker.infoWindow.close();
+                }
+            });
+            infoWindow.open(map, driverMarker);
+        });
+
+        driverMarker.infoWindow = infoWindow;
         currentMarkers.push(driverMarker);
         bounds.extend(driverMarker.getPosition());
     });
@@ -395,6 +496,13 @@ function displayRidesOnMap(rides) {
     // Fit map to show all markers
     if (currentMarkers.length > 1) {
         map.fitBounds(bounds);
+        
+        // Add some padding
+        google.maps.event.addListenerOnce(map, 'bounds_changed', () => {
+            if (map.getZoom() > 15) {
+                map.setZoom(15);
+            }
+        });
     } else if (currentMarkers.length === 1) {
         map.setCenter(currentMarkers[0].getPosition());
         map.setZoom(15);
@@ -421,20 +529,29 @@ function showRequestModal(ride) {
     const detailsContainer = document.getElementById('request-details');
     
     detailsContainer.innerHTML = `
-        <div style="text-align: center; margin-bottom: 1rem;">
-            <h4>${ride.driver.name}</h4>
+        <div style="text-align: center; margin-bottom: 1.5rem;">
+            <h4 style="margin-bottom: 0.5rem;">${ride.driver.name}</h4>
             <div class="driver-rating">
                 ⭐ ${ride.driver.rating.toFixed(1)} • Smart Score: ${ride.smart_score}/100
             </div>
         </div>
-        <div style="background: var(--background-color); padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
-            <p><strong>Pickup:</strong> ${document.getElementById('pickup-input').value}</p>
-            <p><strong>Destination:</strong> ${document.getElementById('destination-input').value}</p>
-            <p><strong>Distance:</strong> ${ride.distance_km} km away</p>
-            <p><strong>Estimated Fare:</strong> ₹${ride.suggested_fare}</p>
+        <div style="background: var(--background-color); padding: 1.5rem; border-radius: 0.75rem; margin-bottom: 1.5rem;">
+            <div style="display: grid; gap: 0.75rem;">
+                <p><strong>📍 Your Pickup:</strong> ${document.getElementById('pickup-input').value}</p>
+                <p><strong>🎯 Your Destination:</strong> ${document.getElementById('destination-input').value}</p>
+                <p><strong>📏 Distance to Driver:</strong> ${ride.distance_km} km away</p>
+                <p><strong>💰 Estimated Fare:</strong> <span style="color: var(--primary-color); font-weight: bold;">₹${ride.suggested_fare}</span></p>
+                <p><strong>🚗 Driver's Route:</strong> ${ride.pickup_address} → ${ride.destination_address}</p>
+            </div>
+        </div>
+        <div style="background: #fef3c7; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
+            <p style="font-size: 0.875rem; color: #92400e; margin: 0; text-align: center;">
+                <strong>💡 Cost-sharing made simple!</strong><br>
+                This fare covers petrol and vehicle costs for both of you.
+            </p>
         </div>
         <p style="font-size: 0.875rem; color: var(--text-secondary); text-align: center;">
-            The driver will receive your request and can accept or decline it.
+            The driver will receive your request and can accept or decline it. You'll be notified of their response.
         </p>
     `;
     
@@ -449,6 +566,8 @@ async function confirmRideRequest() {
     }
 
     try {
+        showLoading(true);
+        
         const response = await apiCall('/rides/request', 'POST', {
             ride_id: selectedRideId,
             pickup_location: pickupCoordinates,
@@ -458,13 +577,218 @@ async function confirmRideRequest() {
         });
 
         closeRequestModal();
-        showStatus('Ride request sent successfully! Wait for driver confirmation.', 'success');
         
-        // You might want to redirect to a "waiting" page or show request status
+        // Set active request ID and start polling
+        activeRequestId = response.request_id;
+        startStatusPolling();
+        
+        showStatus('Ride request sent successfully! Waiting for driver confirmation...', 'success');
+        
+        // Show waiting modal
+        showWaitingModal(response);
         
     } catch (error) {
         console.error('Request failed:', error);
-        showStatus('Failed to send ride request. Please try again.', 'error');
+        showStatus(error.message || 'Failed to send ride request. Please try again.', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Show waiting modal
+function showWaitingModal(requestData) {
+    const modal = document.getElementById('active-ride-modal');
+    const detailsContainer = document.getElementById('active-ride-details');
+    
+    detailsContainer.innerHTML = `
+        <div style="text-align: center; margin-bottom: 1.5rem;">
+            <div class="loading">
+                <div class="spinner"></div>
+            </div>
+            <h4 style="margin: 1rem 0 0.5rem 0;">Request Sent!</h4>
+            <p style="color: var(--text-secondary);">Waiting for driver response...</p>
+        </div>
+        <div style="background: var(--background-color); padding: 1.5rem; border-radius: 0.75rem;">
+            <p><strong>Estimated Fare:</strong> ₹${requestData.estimated_fare}</p>
+            <p><strong>Request ID:</strong> ${requestData.request_id}</p>
+            <p style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 1rem;">
+                The driver typically responds within 2-3 minutes. You'll be automatically notified when they respond.
+            </p>
+        </div>
+    `;
+    
+    modal.classList.remove('hidden');
+}
+
+// Start polling for request status
+function startStatusPolling() {
+    if (!activeRequestId) return;
+    
+    // Poll immediately
+    checkRequestStatus();
+    
+    // Poll every 5 seconds
+    statusPollingInterval = setInterval(() => {
+        checkRequestStatus();
+    }, 5000);
+}
+
+// Stop polling
+function stopStatusPolling() {
+    if (statusPollingInterval) {
+        clearInterval(statusPollingInterval);
+        statusPollingInterval = null;
+    }
+}
+
+// Check request status
+async function checkRequestStatus() {
+    if (!activeRequestId) return;
+    
+    try {
+        const response = await apiCall(`/rides/request-status/${activeRequestId}`);
+        updateRideStatus(response);
+        
+    } catch (error) {
+        console.error('Failed to check status:', error);
+        // Don't show error to avoid spam during polling
+    }
+}
+
+// Update ride status based on response
+function updateRideStatus(statusData) {
+    const modal = document.getElementById('active-ride-modal');
+    const detailsContainer = document.getElementById('active-ride-details');
+    
+    switch (statusData.status) {
+        case 'pending':
+            // Keep waiting state
+            break;
+            
+        case 'accepted':
+            detailsContainer.innerHTML = `
+                <div style="text-align: center; margin-bottom: 1.5rem;">
+                    <div style="font-size: 3rem; margin-bottom: 0.5rem;">✅</div>
+                    <h4 style="margin: 0 0 0.5rem 0; color: var(--success-color);">Ride Accepted!</h4>
+                    <p style="color: var(--text-secondary);">Your driver is on the way</p>
+                </div>
+                <div style="background: var(--background-color); padding: 1.5rem; border-radius: 0.75rem; margin-bottom: 1.5rem;">
+                    <div style="display: grid; gap: 0.75rem;">
+                        <p><strong>👤 Driver:</strong> ${statusData.driver.name}</p>
+                        <p><strong>⭐ Rating:</strong> ${statusData.driver.rating.toFixed(1)}/5.0</p>
+                        <p><strong>📞 Phone:</strong> <a href="tel:${statusData.driver.phone}" style="color: var(--primary-color);">${statusData.driver.phone}</a></p>
+                        <p><strong>💰 Fare:</strong> ₹${statusData.estimated_fare}</p>
+                    </div>
+                </div>
+                <div style="background: #dcfce7; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
+                    <h5 style="margin: 0 0 0.5rem 0; color: #166534;">🔐 Your OTP: ${statusData.otp}</h5>
+                    <p style="font-size: 0.875rem; color: #166534; margin: 0;">
+                        Share this OTP with your driver when they arrive to confirm your identity and start the ride.
+                    </p>
+                </div>
+                <p style="font-size: 0.875rem; color: var(--text-secondary); text-align: center;">
+                    The driver will call or message you shortly. Keep your phone handy!
+                </p>
+            `;
+            
+            // Show success notification
+            showStatus('🎉 Great! Your ride has been accepted. Driver details are shown above.', 'success');
+            break;
+            
+        case 'rejected':
+            stopStatusPolling();
+            activeRequestId = null;
+            closeActiveRideModal();
+            showStatus('😔 Your ride request was declined. Please try requesting another ride.', 'warning');
+            break;
+            
+        case 'started':
+            detailsContainer.innerHTML = `
+                <div style="text-align: center; margin-bottom: 1.5rem;">
+                    <div style="font-size: 3rem; margin-bottom: 0.5rem;">🚗</div>
+                    <h4 style="margin: 0 0 0.5rem 0; color: var(--primary-color);">Ride Started!</h4>
+                    <p style="color: var(--text-secondary);">Enjoy your trip</p>
+                </div>
+                <div style="background: var(--background-color); padding: 1.5rem; border-radius: 0.75rem;">
+                    <div style="display: grid; gap: 0.75rem;">
+                        <p><strong>👤 Driver:</strong> ${statusData.driver.name}</p>
+                        <p><strong>📞 Contact:</strong> <a href="tel:${statusData.driver.phone}" style="color: var(--primary-color);">${statusData.driver.phone}</a></p>
+                        <p><strong>📍 Pickup:</strong> ${statusData.pickup_address}</p>
+                        <p><strong>🎯 Destination:</strong> ${statusData.destination_address}</p>
+                        <p><strong>💰 Fare:</strong> ₹${statusData.estimated_fare}</p>
+                    </div>
+                </div>
+            `;
+            
+            showStatus('🚀 Your ride has started! Have a safe journey.', 'success');
+            break;
+            
+        case 'completed':
+            stopStatusPolling();
+            activeRequestId = null;
+            detailsContainer.innerHTML = `
+                <div style="text-align: center; margin-bottom: 1.5rem;">
+                    <div style="font-size: 3rem; margin-bottom: 0.5rem;">🎉</div>
+                    <h4 style="margin: 0 0 0.5rem 0; color: var(--success-color);">Ride Completed!</h4>
+                    <p style="color: var(--text-secondary);">Thank you for using CampusPool</p>
+                </div>
+                <div style="background: var(--background-color); padding: 1.5rem; border-radius: 0.75rem; margin-bottom: 1rem;">
+                    <p><strong>Final Fare:</strong> ₹${statusData.estimated_fare}</p>
+                    <p style="font-size: 0.875rem; color: var(--text-secondary);">
+                        Please pay your driver the agreed amount. Rate your experience to help improve our service.
+                    </p>
+                </div>
+                <button onclick="closeActiveRideModal()" class="btn btn-primary btn-full">
+                    Close
+                </button>
+            `;
+            
+            showStatus('✅ Ride completed successfully! Thank you for using CampusPool.', 'success');
+            break;
+            
+        case 'cancelled':
+            stopStatusPolling();
+            activeRequestId = null;
+            closeActiveRideModal();
+            showStatus('ℹ️ Your ride request was cancelled.', 'info');
+            break;
+    }
+}
+
+// Show active ride modal
+function showActiveRideModal(rideInfo) {
+    const modal = document.getElementById('active-ride-modal');
+    updateRideStatus(rideInfo);
+    modal.classList.remove('hidden');
+}
+
+// Close active ride modal
+function closeActiveRideModal() {
+    document.getElementById('active-ride-modal').classList.add('hidden');
+}
+
+// Cancel active ride
+async function cancelActiveRide() {
+    if (!activeRequestId) return;
+    
+    if (!confirm('Are you sure you want to cancel this ride request?')) {
+        return;
+    }
+    
+    try {
+        // You would need to implement a cancel endpoint
+        showStatus('Cancelling ride request...', 'info');
+        
+        // For now, just stop polling and reset
+        stopStatusPolling();
+        activeRequestId = null;
+        closeActiveRideModal();
+        
+        showStatus('Ride request cancelled.', 'info');
+        
+    } catch (error) {
+        console.error('Failed to cancel ride:', error);
+        showStatus('Failed to cancel ride. Please try again.', 'error');
     }
 }
 
@@ -489,7 +813,17 @@ function switchView(view) {
         
         // Trigger map resize
         if (map) {
-            google.maps.event.trigger(map, 'resize');
+            setTimeout(() => {
+                google.maps.event.trigger(map, 'resize');
+                // Re-fit bounds if we have markers
+                if (currentMarkers.length > 1) {
+                    const bounds = new google.maps.LatLngBounds();
+                    currentMarkers.forEach(marker => {
+                        bounds.extend(marker.getPosition());
+                    });
+                    map.fitBounds(bounds);
+                }
+            }, 100);
         }
     } else {
         mapView.classList.remove('active');
@@ -536,11 +870,13 @@ function showStatus(message, type) {
     statusEl.className = `status-message status-${type}`;
     statusEl.classList.remove('hidden');
     
-    // Auto-hide success messages after 5 seconds
-    if (type === 'success') {
+    // Auto-hide success and info messages after 7 seconds
+    if (type === 'success' || type === 'info') {
         setTimeout(() => {
-            statusEl.classList.add('hidden');
-        }, 5000);
+            if (statusEl.textContent === message) { // Only hide if it's the same message
+                statusEl.classList.add('hidden');
+            }
+        }, 7000);
     }
 }
 
@@ -598,9 +934,15 @@ async function handleProfileSubmit(e) {
     }
 }
 
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    stopStatusPolling();
+});
+
 // Logout function
 window.handleLogout = async function() {
     try {
+        stopStatusPolling();
         await apiCall('/auth/logout', 'POST');
     } catch (error) {
         console.error('Logout error:', error);

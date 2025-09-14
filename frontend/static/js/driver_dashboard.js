@@ -1,4 +1,4 @@
-// Driver Dashboard JavaScript
+// Enhanced Driver Dashboard JavaScript with Real-time Updates
 
 // Global variables
 let isOnline = false;
@@ -7,6 +7,8 @@ let destinationCoordinates = null;
 let currentLocation = null;
 let activeRideId = null;
 let requestsRefreshInterval = null;
+let acceptedRequestId = null;
+let currentOTP = null;
 
 // College coordinates (Kristu Jayanti College)
 const COLLEGE_COORDS = [77.7334, 12.8627];
@@ -38,7 +40,7 @@ function checkAuth() {
     return true;
 }
 
-// API helper function
+// API helper function with better error handling
 async function apiCall(endpoint, method = 'GET', data = null) {
     const token = getAuthToken();
     const headers = {
@@ -57,6 +59,14 @@ async function apiCall(endpoint, method = 'GET', data = null) {
 
     try {
         const response = await fetch(`${API_URL}${endpoint}`, config);
+        
+        if (response.status === 401) {
+            // Token expired
+            clearAuthToken();
+            window.location.href = '/';
+            return;
+        }
+        
         const result = await response.json();
         
         if (!response.ok) {
@@ -77,7 +87,39 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeEventListeners();
     loadUserProfile();
     checkProfileCompletion();
+    checkForActiveRide();
 });
+
+// Check for active ride on page load
+async function checkForActiveRide() {
+    try {
+        const response = await apiCall('/rides/active-ride');
+        
+        if (response.has_active_ride) {
+            const rideInfo = response.ride_info;
+            
+            if (rideInfo.status === 'accepted' || rideInfo.status === 'started') {
+                acceptedRequestId = rideInfo.request_id;
+                currentOTP = rideInfo.otp;
+                
+                // Show active ride section
+                showActiveRideSection(rideInfo);
+                
+                // If we have an active ride, we should be online
+                if (!isOnline) {
+                    setOnlineState(true);
+                }
+                
+                // Start polling if request is accepted but not started
+                if (rideInfo.status === 'accepted') {
+                    showOtpModal(rideInfo.otp, "Share this OTP with the rider to start the trip");
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Failed to check active ride:', error);
+    }
+}
 
 // Initialize event listeners
 function initializeEventListeners() {
@@ -99,6 +141,10 @@ function initializeEventListeners() {
     
     // OTP modal
     document.getElementById('close-otp-modal').addEventListener('click', closeOtpModal);
+    
+    // OTP verification
+    document.getElementById('verify-otp-btn')?.addEventListener('click', verifyOTP);
+    document.getElementById('complete-ride-btn')?.addEventListener('click', completeRide);
 }
 
 // Initialize Google Maps autocomplete
@@ -152,6 +198,18 @@ function initializeAutocomplete() {
             console.log('Destination location set:', address, destinationCoordinates);
         }
     });
+}
+
+// Set online state
+function setOnlineState(online) {
+    isOnline = online;
+    const toggle = document.getElementById('online-toggle');
+    
+    if (online) {
+        toggle.classList.add('active');
+    } else {
+        toggle.classList.remove('active');
+    }
 }
 
 // Toggle online/offline status
@@ -256,7 +314,7 @@ async function startAcceptingRequests() {
         
     } catch (error) {
         console.error('Failed to go live:', error);
-        showStatus('Failed to go online. Please try again.', 'error');
+        showStatus(error.message || 'Failed to go online. Please try again.', 'error');
         
         // Reset toggle
         document.getElementById('online-toggle').classList.remove('active');
@@ -274,6 +332,8 @@ async function goOffline() {
         // Update state
         isOnline = false;
         activeRideId = null;
+        acceptedRequestId = null;
+        currentOTP = null;
         
         // Update UI
         const toggle = document.getElementById('online-toggle');
@@ -281,6 +341,7 @@ async function goOffline() {
         document.getElementById('route-section').classList.add('hidden');
         document.getElementById('online-status').classList.add('hidden');
         document.getElementById('requests-section').classList.add('hidden');
+        document.getElementById('active-ride-section').classList.add('hidden');
         
         // Stop polling
         stopRequestsPolling();
@@ -297,10 +358,10 @@ async function goOffline() {
 function startRequestsPolling() {
     loadRideRequests(); // Load immediately
     
-    // Poll every 10 seconds
+    // Poll every 8 seconds
     requestsRefreshInterval = setInterval(() => {
         loadRideRequests();
-    }, 10000);
+    }, 8000);
 }
 
 // Stop polling for requests
@@ -365,7 +426,8 @@ function createRequestCard(request) {
         </div>
         <div class="request-details">
             <strong>Pickup:</strong> ${request.pickup_address}<br>
-            <strong>Destination:</strong> ${request.destination_address}
+            <strong>Destination:</strong> ${request.destination_address}<br>
+            <strong>Estimated Fare:</strong> ₹${request.estimated_fare}
         </div>
         <div class="request-actions">
             <button class="btn btn-danger" onclick="respondToRequest('${request.request_id}', 'reject')">
@@ -387,19 +449,30 @@ window.respondToRequest = async function(requestId, action) {
         });
         
         if (action === 'accept') {
+            acceptedRequestId = requestId;
+            currentOTP = response.otp;
+            
+            // Hide requests section and show active ride
+            document.getElementById('requests-section').classList.add('hidden');
+            
             showOtpModal(response.otp, response.note);
+            
+            // Stop polling for new requests
+            stopRequestsPolling();
         }
         
         showStatus(response.message, action === 'accept' ? 'success' : 'info');
         
-        // Refresh requests list
-        setTimeout(() => {
-            loadRideRequests();
-        }, 1000);
+        // Refresh requests list if we declined
+        if (action === 'reject') {
+            setTimeout(() => {
+                loadRideRequests();
+            }, 1000);
+        }
         
     } catch (error) {
         console.error('Failed to respond to request:', error);
-        showStatus('Failed to respond to request. Please try again.', 'error');
+        showStatus(error.message || 'Failed to respond to request. Please try again.', 'error');
     }
 };
 
@@ -410,20 +483,175 @@ function showOtpModal(otp, note) {
     
     detailsContainer.innerHTML = `
         <div style="background: var(--background-color); padding: 1.5rem; border-radius: 1rem; margin-bottom: 1rem;">
-            <h4 style="font-size: 2rem; color: var(--secondary-color); margin-bottom: 0.5rem;">${otp}</h4>
-            <p style="color: var(--text-secondary); margin-bottom: 0;">${note}</p>
+            <h4 style="font-size: 2rem; color: var(--secondary-color); margin-bottom: 0.5rem; text-align: center;">${otp}</h4>
+            <p style="color: var(--text-secondary); margin-bottom: 0; text-align: center;">${note}</p>
         </div>
-        <div style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.4;">
-            <p><strong>Next steps:</strong></p>
-            <ol style="text-align: left; padding-left: 1.5rem;">
-                <li>Navigate to the rider's pickup location</li>
-                <li>Ask the rider for the OTP to confirm identity</li>
-                <li>Start the trip once OTP is verified</li>
+        <div style="background: #dcfce7; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
+            <h5 style="margin: 0 0 0.5rem 0; color: #166534;">📍 Next Steps:</h5>
+            <ol style="margin: 0; padding-left: 1.5rem; color: #166534; font-size: 0.875rem;">
+                <li>Navigate to rider's pickup location</li>
+                <li>Call/message the rider when you arrive</li>
+                <li>Ask rider for the OTP to confirm identity</li>
+                <li>Enter OTP below to start the trip</li>
             </ol>
+        </div>
+        <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
+            <input type="text" id="otp-input" placeholder="Enter OTP from rider" 
+                   style="flex: 1; padding: 0.75rem; border: 2px solid #e5e7eb; border-radius: 0.5rem; font-size: 1rem; text-align: center; font-weight: bold; letter-spacing: 2px;"
+                   maxlength="4">
+            <button id="verify-otp-btn" class="btn btn-primary" style="white-space: nowrap;">
+                ✅ Verify & Start
+            </button>
         </div>
     `;
     
     modal.classList.remove('hidden');
+    
+    // Add event listener for OTP verification
+    document.getElementById('verify-otp-btn').addEventListener('click', verifyOTP);
+    
+    // Add enter key support for OTP input
+    document.getElementById('otp-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            verifyOTP();
+        }
+    });
+}
+
+// Verify OTP and start ride
+async function verifyOTP() {
+    const otpInput = document.getElementById('otp-input');
+    const enteredOTP = otpInput.value.trim();
+    
+    if (!enteredOTP) {
+        showStatus('Please enter the OTP shared by the rider', 'error');
+        return;
+    }
+    
+    if (enteredOTP !== currentOTP) {
+        showStatus('Invalid OTP. Please check with the rider and try again.', 'error');
+        otpInput.focus();
+        return;
+    }
+    
+    try {
+        const response = await apiCall('/rides/verify-otp', 'POST', {
+            request_id: acceptedRequestId,
+            otp: enteredOTP
+        });
+        
+        showStatus('🎉 OTP verified! Ride has started. Have a safe journey!', 'success');
+        
+        // Close OTP modal and show active ride section
+        closeOtpModal();
+        showActiveRideInProgress();
+        
+    } catch (error) {
+        console.error('OTP verification failed:', error);
+        showStatus(error.message || 'OTP verification failed. Please try again.', 'error');
+    }
+}
+
+// Show active ride in progress
+function showActiveRideInProgress() {
+    const activeSection = document.getElementById('active-ride-section');
+    const detailsContainer = document.getElementById('active-ride-details');
+    
+    detailsContainer.innerHTML = `
+        <div style="background: #dcfce7; padding: 1.5rem; border-radius: 1rem; margin-bottom: 1.5rem; text-align: center;">
+            <h4 style="color: #166534; margin-bottom: 0.5rem;">🚗 Ride In Progress</h4>
+            <p style="color: #166534; margin: 0; font-size: 0.875rem;">Drive safely to the destination</p>
+        </div>
+        <div style="background: var(--background-color); padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
+            <p><strong>Request ID:</strong> ${acceptedRequestId}</p>
+            <p style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                Click "Complete Ride" when you reach the destination and the rider gets off.
+            </p>
+        </div>
+        <button id="complete-ride-btn" class="btn btn-primary btn-full">
+            🏁 Complete Ride
+        </button>
+    `;
+    
+    activeSection.classList.remove('hidden');
+    
+    // Add event listener for complete ride button
+    document.getElementById('complete-ride-btn').addEventListener('click', completeRide);
+}
+
+// Complete the ride
+async function completeRide() {
+    if (!acceptedRequestId) {
+        showStatus('No active ride to complete', 'error');
+        return;
+    }
+    
+    if (!confirm('Are you sure you want to complete this ride?')) {
+        return;
+    }
+    
+    try {
+        const response = await apiCall('/rides/complete-ride', 'POST', {
+            request_id: acceptedRequestId
+        });
+        
+        showStatus('🎉 Ride completed successfully!', 'success');
+        
+        // Reset state
+        acceptedRequestId = null;
+        currentOTP = null;
+        
+        // Hide active ride section and show requests section
+        document.getElementById('active-ride-section').classList.add('hidden');
+        document.getElementById('requests-section').classList.remove('hidden');
+        
+        // Restart polling for new requests
+        startRequestsPolling();
+        
+    } catch (error) {
+        console.error('Failed to complete ride:', error);
+        showStatus(error.message || 'Failed to complete ride. Please try again.', 'error');
+    }
+}
+
+// Show active ride section with ride info
+function showActiveRideSection(rideInfo) {
+    const activeSection = document.getElementById('active-ride-section');
+    const detailsContainer = document.getElementById('active-ride-details');
+    
+    let content = '';
+    
+    if (rideInfo.status === 'accepted') {
+        content = `
+            <div style="background: #fef3c7; padding: 1.5rem; border-radius: 1rem; margin-bottom: 1rem; text-align: center;">
+                <h4 style="color: #92400e; margin-bottom: 0.5rem;">🔄 Waiting for Rider</h4>
+                <p style="color: #92400e; margin: 0; font-size: 0.875rem;">Share OTP with rider to start the trip</p>
+            </div>
+            <div style="background: var(--background-color); padding: 1rem; border-radius: 0.5rem;">
+                <p><strong>Rider:</strong> ${rideInfo.rider.name}</p>
+                <p><strong>Phone:</strong> ${rideInfo.rider.phone}</p>
+                <p><strong>OTP:</strong> <span style="font-size: 1.5rem; color: var(--secondary-color); font-weight: bold;">${rideInfo.otp}</span></p>
+            </div>
+        `;
+    } else if (rideInfo.status === 'started') {
+        content = `
+            <div style="background: #dcfce7; padding: 1.5rem; border-radius: 1rem; margin-bottom: 1rem; text-align: center;">
+                <h4 style="color: #166534; margin-bottom: 0.5rem;">🚗 Ride In Progress</h4>
+                <p style="color: #166534; margin: 0; font-size: 0.875rem;">Drive safely to the destination</p>
+            </div>
+            <button id="complete-ride-btn" class="btn btn-primary btn-full">
+                🏁 Complete Ride
+            </button>
+        `;
+    }
+    
+    detailsContainer.innerHTML = content;
+    activeSection.classList.remove('hidden');
+    
+    // Add event listeners if needed
+    if (rideInfo.status === 'started') {
+        document.getElementById('complete-ride-btn')?.addEventListener('click', completeRide);
+    }
 }
 
 // Close OTP modal
@@ -466,11 +694,13 @@ function showStatus(message, type) {
     statusEl.className = `status-message status-${type}`;
     statusEl.classList.remove('hidden');
     
-    // Auto-hide success and info messages after 5 seconds
+    // Auto-hide success and info messages after 7 seconds
     if (type === 'success' || type === 'info') {
         setTimeout(() => {
-            statusEl.classList.add('hidden');
-        }, 5000);
+            if (statusEl.textContent === message) { // Only hide if it's the same message
+                statusEl.classList.add('hidden');
+            }
+        }, 7000);
     }
 }
 
@@ -552,3 +782,5 @@ window.handleLogout = async function() {
         window.location.href = '/';
     }
 };
+
+

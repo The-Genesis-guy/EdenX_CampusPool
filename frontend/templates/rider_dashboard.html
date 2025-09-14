@@ -83,8 +83,17 @@
                 </div>
                 
                 <div id="no-drivers" class="empty-state hidden">
+                    <div class="empty-icon">🚗</div>
                     <h3>No rides available</h3>
-                    <p>Try adjusting your pickup location or check back later.</p>
+                    <p>Try adjusting your pickup location or check back later. More drivers are usually available during peak hours.</p>
+                    <div class="empty-tips">
+                        <h4>💡 Tips to find more rides:</h4>
+                        <ul>
+                            <li>Search during college hours (7-9 AM, 5-7 PM)</li>
+                            <li>Try a nearby location as pickup point</li>
+                            <li>Check if your destination matches popular routes</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
 
@@ -155,6 +164,24 @@
                     </button>
                     <button id="cancel-request-btn" class="btn btn-outline btn-full mt-2">
                         Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Ride Status Modal -->
+        <div id="active-ride-modal" class="modal-overlay hidden">
+            <div class="modal-content">
+                <h3>Ride Status</h3>
+                <div id="active-ride-details">
+                    <!-- Active ride details will be populated here -->
+                </div>
+                <div class="modal-actions">
+                    <button id="close-active-ride-modal" class="btn btn-outline btn-full">
+                        Close
+                    </button>
+                    <button id="cancel-ride-btn" class="btn btn-danger btn-full mt-2">
+                        Cancel Request
                     </button>
                 </div>
             </div>

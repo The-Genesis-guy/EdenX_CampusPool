@@ -27,6 +27,10 @@ def create_app():
     bcrypt.init_app(app)
     cors.init_app(app, resources={r"/api/*": {"origins": "*"}})
 
+    # -------------------------
+    # Frontend Routes
+    # -------------------------
+
     @app.route('/')
     def index():
         maps_api_key = app.config.get('GOOGLE_MAPS_API_KEY', '')
@@ -42,13 +46,41 @@ def create_app():
         maps_api_key = app.config.get('GOOGLE_MAPS_API_KEY', '')
         return render_template("driver_dashboard.html", maps_api_key=maps_api_key)
 
+    @app.route("/profile")
+    def profile():
+        maps_api_key = app.config.get('GOOGLE_MAPS_API_KEY', '')
+        return render_template("profile.html", maps_api_key=maps_api_key)
+
+    # -------------------------
+    # Health Check
+    # -------------------------
+    @app.route("/health")
+    def health_check():
+        return {"status": "healthy", "message": "CampusPool API is running"}, 200
+
+    # -------------------------
+    # Error Handlers
+    # -------------------------
+    @app.errorhandler(404)
+    def not_found_error(error):
+        return {"error": "Resource not found"}, 404
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        return {"error": "Internal server error"}, 500
+
+    @app.errorhandler(400)
+    def bad_request_error(error):
+        return {"error": "Bad request"}, 400
+
+    # -------------------------
     # Register API blueprints
+    # -------------------------
     from .api.auth import auth_bp
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     
     from .api.maps import maps_bp
     app.register_blueprint(maps_bp, url_prefix='/api/maps')
-    
     
     from .api.rides import rides_bp
     app.register_blueprint(rides_bp, url_prefix='/api/rides')
@@ -56,7 +88,4 @@ def create_app():
     from .api.profiles import profiles_bp
     app.register_blueprint(profiles_bp, url_prefix='/api/profiles')
 
-
     return app
-
-    
