@@ -187,7 +187,7 @@ def get_college_coordinates():
     """
     Returns the coordinates of Kristu Jayanti College.
     """
-    return [77.7334, 12.8627]  # [longitude, latitude]
+    return [77.64038,13.05794]  # [longitude, latitude]
 
 def get_college_address():
     """

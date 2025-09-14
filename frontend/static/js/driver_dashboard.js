@@ -8,10 +8,11 @@ let currentLocation = null;
 let activeRideId = null;
 let requestsRefreshInterval = null;
 let acceptedRequestId = null;
+let locationTrackingInterval = null;
 let currentOTP = null;
 
 // College coordinates (Kristu Jayanti College)
-const COLLEGE_COORDS = [77.7334, 12.8627];
+const COLLEGE_COORDS = [77.64038,13.05794];
 const COLLEGE_ADDRESS = "Kristu Jayanti College, K Narayanapura, Kothanur, Bengaluru, Karnataka 560077, India";
 
 // API Configuration
@@ -311,6 +312,8 @@ async function startAcceptingRequests() {
         
         // Start polling for requests
         startRequestsPolling();
+        // Start location tracking
+        startLocationTracking();
         
     } catch (error) {
         console.error('Failed to go live:', error);
@@ -345,6 +348,7 @@ async function goOffline() {
         
         // Stop polling
         stopRequestsPolling();
+        stopLocationTracking();
         
         showStatus('You are now offline', 'info');
         
@@ -736,14 +740,13 @@ async function handleProfileSubmit(e) {
     
     const formData = new FormData(e.target);
     const profileData = {
-        phone_number: formData.get('phone_number') || document.getElementById('phone').value,
-        vehicle_model: formData.get('vehicle_model') || document.getElementById('vehicle-model').value,
-        vehicle_color: formData.get('vehicle_color') || document.getElementById('vehicle-color').value,
-        vehicle_plate: formData.get('vehicle_plate') || document.getElementById('vehicle-plate').value,
-        emergency_contact: formData.get('emergency_contact') || document.getElementById('emergency-contact').value,
-        college_id: formData.get('college_id') || document.getElementById('college-id').value
+        phone_number: document.getElementById('phone').value,
+        vehicle_model: document.getElementById('vehicle-model').value,
+        vehicle_color: document.getElementById('vehicle-color').value,
+        vehicle_plate: document.getElementById('vehicle-plate').value,
+        emergency_contact: document.getElementById('emergency-contact').value,
+        college_id: document.getElementById('college-id').value
     };
-
     // Remove empty fields
     Object.keys(profileData).forEach(key => {
         if (!profileData[key]) {
@@ -784,3 +787,36 @@ window.handleLogout = async function() {
 };
 
 
+
+// Real-time location tracking for drivers
+function startLocationTracking() {
+    if (!navigator.geolocation) return;
+    
+    locationTrackingInterval = setInterval(() => {
+        if (isOnline && navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const { latitude, longitude } = position.coords;
+                    try {
+                        await apiCall('/rides/update-location', 'POST', {
+                            current_location: [longitude, latitude]
+                        });
+                        console.log('📍 Location updated:', latitude.toFixed(4), longitude.toFixed(4));
+                    } catch (error) {
+                        console.error('Failed to update location:', error);
+                    }
+                },
+                (error) => console.error('Geolocation error:', error),
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }
+            );
+        }
+    }, 10000); // Every 10 seconds
+}
+
+function stopLocationTracking() {
+    if (locationTrackingInterval) {
+        clearInterval(locationTrackingInterval);
+        locationTrackingInterval = null;
+        console.log('📍 Location tracking stopped');
+    }
+}

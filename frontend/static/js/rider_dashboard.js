@@ -10,9 +10,12 @@ let availableRides = [];
 let selectedRideId = null;
 let activeRequestId = null;
 let statusPollingInterval = null;
+let driverTrackingInterval = null;
+let liveDriverMarker = null;
+let directionsRenderer = null;
 
 // College coordinates (Kristu Jayanti College)
-const COLLEGE_COORDS = [77.7334, 12.8627]; // [longitude, latitude]
+const COLLEGE_COORDS = [77.64038,13.05794]; // [longitude, latitude]
 const COLLEGE_ADDRESS = "Kristu Jayanti College, K Narayanapura, Kothanur, Bengaluru, Karnataka 560077, India";
 
 // API Configuration
@@ -371,7 +374,7 @@ function createRideCard(ride) {
                 <strong>📍 Route:</strong> ${ride.pickup_address} → ${ride.destination_address}
             </div>
             <div class="ride-details">
-                <span><strong>🪑 Seats:</strong> ${ride.seats_available}</span>
+                <span><strong> Seats:</strong> ${ride.seats_available}</span>
                 <span><strong>💰 Fare:</strong> ₹${ride.suggested_fare}</span>
             </div>
         </div>
@@ -665,31 +668,47 @@ function updateRideStatus(statusData) {
             // Keep waiting state
             break;
             
-        case 'accepted':
+case 'accepted':
             detailsContainer.innerHTML = `
                 <div style="text-align: center; margin-bottom: 1.5rem;">
                     <div style="font-size: 3rem; margin-bottom: 0.5rem;">✅</div>
-                    <h4 style="margin: 0 0 0.5rem 0; color: var(--success-color);">Ride Accepted!</h4>
-                    <p style="color: var(--text-secondary);">Your driver is on the way</p>
+                    <h4 style="margin: 0 0 0.5rem 0; color: var(--secondary-color);">Driver Accepted!</h4>
+                    <p style="color: var(--text-secondary);">Get ready to share your OTP</p>
                 </div>
-                <div style="background: var(--background-color); padding: 1.5rem; border-radius: 0.75rem; margin-bottom: 1.5rem;">
-                    <div style="display: grid; gap: 0.75rem;">
-                        <p><strong>👤 Driver:</strong> ${statusData.driver.name}</p>
-                        <p><strong>⭐ Rating:</strong> ${statusData.driver.rating.toFixed(1)}/5.0</p>
-                        <p><strong>📞 Phone:</strong> <a href="tel:${statusData.driver.phone}" style="color: var(--primary-color);">${statusData.driver.phone}</a></p>
-                        <p><strong>💰 Fare:</strong> ₹${statusData.estimated_fare}</p>
+                
+                <div style="background: #dcfce7; padding: 2rem; border-radius: 1rem; margin-bottom: 1.5rem; text-align: center; border: 3px solid #10b981;">
+                    <h4 style="color: #166534; margin-bottom: 1rem; font-size: 1.125rem;">
+                        🔐 Share this OTP with your driver:
+                    </h4>
+                    <div style="font-size: 3rem; font-weight: bold; color: #10b981; 
+                                background: white; padding: 1rem; border-radius: 1rem; 
+                                border: 3px dashed #10b981; margin-bottom: 1rem; 
+                                letter-spacing: 0.5rem; font-family: monospace;">
+                        ${statusData.otp}
                     </div>
                 </div>
-                <div style="background: #dcfce7; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
-                    <h5 style="margin: 0 0 0.5rem 0; color: #166534;">🔐 Your OTP: ${statusData.otp}</h5>
-                    <p style="font-size: 0.875rem; color: #166534; margin: 0;">
-                        Share this OTP with your driver when they arrive to confirm your identity and start the ride.
-                    </p>
+                
+                <div style="background: var(--background-color); padding: 1.5rem; border-radius: 0.75rem; margin-bottom: 1rem;">
+                    <p><strong>👤 Driver:</strong> ${statusData.driver.name}</p>
+                    <p><strong>⭐ Rating:</strong> ${statusData.driver.rating.toFixed(1)}/5.0</p>
+                    <p><strong>📞 Phone:</strong> <a href="tel:${statusData.driver.phone}" style="color: var(--primary-color); text-decoration: none; font-weight: bold;">${statusData.driver.phone}</a></p>
+                    <p><strong>💰 Fare:</strong> ₹${statusData.estimated_fare}</p>
                 </div>
-                <p style="font-size: 0.875rem; color: var(--text-secondary); text-align: center;">
-                    The driver will call or message you shortly. Keep your phone handy!
-                </p>
+                
+                <div id="eta-display"></div>
             `;
+            
+            // Start tracking driver location
+            startDriverTracking();
+            
+            // Show route if coordinates available
+            if (pickupCoordinates && destinationCoordinates) {
+                setTimeout(() => showRouteDirections(pickupCoordinates, destinationCoordinates), 1000);
+            }
+            
+            // Enhanced notification
+            showEnhancedNotification(`🎉 Driver accepted! Your OTP is ${statusData.otp}`, 'success');
+            break;
             
             // Show success notification
             showStatus('🎉 Great! Your ride has been accepted. Driver details are shown above.', 'success');
@@ -697,6 +716,7 @@ function updateRideStatus(statusData) {
             
         case 'rejected':
             stopStatusPolling();
+            stopDriverTracking();
             activeRequestId = null;
             closeActiveRideModal();
             showStatus('😔 Your ride request was declined. Please try requesting another ride.', 'warning');
@@ -725,6 +745,7 @@ function updateRideStatus(statusData) {
             
         case 'completed':
             stopStatusPolling();
+            stopDriverTracking();
             activeRequestId = null;
             detailsContainer.innerHTML = `
                 <div style="text-align: center; margin-bottom: 1.5rem;">
@@ -748,6 +769,7 @@ function updateRideStatus(statusData) {
             
         case 'cancelled':
             stopStatusPolling();
+            stopDriverTracking();
             activeRequestId = null;
             closeActiveRideModal();
             showStatus('ℹ️ Your ride request was cancelled.', 'info');
@@ -776,15 +798,16 @@ async function cancelActiveRide() {
     }
     
     try {
-        // You would need to implement a cancel endpoint
         showStatus('Cancelling ride request...', 'info');
         
-        // For now, just stop polling and reset
+        await apiCall(`/rides/cancel-request/${activeRequestId}`, 'POST');
+        
         stopStatusPolling();
+        stopDriverTracking();
         activeRequestId = null;
         closeActiveRideModal();
         
-        showStatus('Ride request cancelled.', 'info');
+        showStatus('Ride request cancelled successfully.', 'info');
         
     } catch (error) {
         console.error('Failed to cancel ride:', error);
@@ -910,11 +933,10 @@ async function checkProfileCompletion() {
 async function handleProfileSubmit(e) {
     e.preventDefault();
     
-    const formData = new FormData(e.target);
     const profileData = {
-        phone_number: formData.get('phone_number') || document.getElementById('phone').value,
-        emergency_contact: formData.get('emergency_contact') || document.getElementById('emergency-contact').value,
-        college_id: formData.get('college_id') || document.getElementById('college-id').value
+        phone_number: document.getElementById('phone').value,
+        emergency_contact: document.getElementById('emergency-contact').value,
+        college_id: document.getElementById('college-id').value
     };
 
     // Remove empty fields
@@ -937,12 +959,14 @@ async function handleProfileSubmit(e) {
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {
     stopStatusPolling();
+    stopDriverTracking();
 });
 
 // Logout function
 window.handleLogout = async function() {
     try {
         stopStatusPolling();
+        stopDriverTracking();
         await apiCall('/auth/logout', 'POST');
     } catch (error) {
         console.error('Logout error:', error);
@@ -951,3 +975,174 @@ window.handleLogout = async function() {
         window.location.href = '/';
     }
 };
+
+
+// Track driver location in real-time during active ride
+function startDriverTracking() {
+    if (!activeRequestId) return;
+    
+    console.log('🚗 Starting driver tracking...');
+    driverTrackingInterval = setInterval(async () => {
+        try {
+            const response = await apiCall(`/rides/driver-location/${activeRequestId}`);
+            if (response.driver_location) {
+                updateDriverMarkerOnMap(response.driver_location);
+                updateETADisplay(response.driver_location);
+            }
+        } catch (error) {
+            console.error('Failed to get driver location:', error);
+        }
+    }, 8000); // Every 8 seconds
+}
+
+function stopDriverTracking() {
+    if (driverTrackingInterval) {
+        clearInterval(driverTrackingInterval);
+        driverTrackingInterval = null;
+        console.log('🚗 Driver tracking stopped');
+    }
+    
+    // Remove live driver marker
+    if (liveDriverMarker) {
+        liveDriverMarker.setMap(null);
+        liveDriverMarker = null;
+    }
+}
+
+function updateDriverMarkerOnMap(driverCoords) {
+    if (!map || !driverCoords) return;
+    
+    // Remove old driver marker
+    if (liveDriverMarker) {
+        liveDriverMarker.setMap(null);
+    }
+    
+    // Add new live driver marker with animation
+    liveDriverMarker = new google.maps.Marker({
+        position: { lat: driverCoords[1], lng: driverCoords[0] },
+        map: map,
+        title: 'Driver Live Location',
+        icon: {
+            url: 'data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 24 24" fill="%23059669"><circle cx="12" cy="12" r="8" fill="%23ffffff" stroke="%23059669" stroke-width="3"/><circle cx="12" cy="12" r="3" fill="%23059669"/></svg>',
+            scaledSize: new google.maps.Size(50, 50)
+        },
+        animation: google.maps.Animation.BOUNCE
+    });
+    
+    // Stop bouncing after 1 second
+    setTimeout(() => {
+        if (liveDriverMarker) {
+            liveDriverMarker.setAnimation(null);
+        }
+    }, 1000);
+    
+    console.log('📍 Driver marker updated:', driverCoords);
+}
+
+// Calculate and display ETA
+function calculateETA(driverLocation, riderLocation) {
+    if (!driverLocation || !riderLocation) return null;
+    
+    const distance = calculateDistance(driverLocation, riderLocation);
+    const avgSpeed = 25; // km/h in city traffic
+    const etaMinutes = Math.round((distance * 60) / avgSpeed);
+    
+    return {
+        distance: distance.toFixed(1),
+        eta: etaMinutes,
+        etaText: etaMinutes < 60 ? `${etaMinutes} min` : `${Math.round(etaMinutes/60)}h ${etaMinutes%60}m`
+    };
+}
+
+function calculateDistance(coord1, coord2) {
+    const R = 6371; // Earth's radius in km
+    const dLat = (coord2[1] - coord1[1]) * Math.PI / 180;
+    const dLon = (coord2[0] - coord1[0]) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(coord1[1] * Math.PI / 180) * Math.cos(coord2[1] * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
+function updateETADisplay(driverLocation) {
+    if (!pickupCoordinates || !driverLocation) return;
+    
+    const eta = calculateETA(driverLocation, pickupCoordinates);
+    if (eta && document.getElementById('eta-display')) {
+        document.getElementById('eta-display').innerHTML = `
+            <div style="background: #dbeafe; padding: 0.5rem; border-radius: 0.5rem; text-align: center; margin-top: 0.5rem;">
+                🚗 Driver is ${eta.distance}km away • ETA: ${eta.etaText}
+            </div>
+        `;
+    }
+}
+
+// Show route directions on map
+function showRouteDirections(start, end) {
+    if (!map) return;
+    
+    const directionsService = new google.maps.DirectionsService();
+    
+    if (!directionsRenderer) {
+        directionsRenderer = new google.maps.DirectionsRenderer({
+            suppressMarkers: false,
+            polylineOptions: {
+                strokeColor: '#2563eb',
+                strokeWeight: 4,
+                strokeOpacity: 0.8
+            }
+        });
+        directionsRenderer.setMap(map);
+    }
+    
+    const request = {
+        origin: { lat: start[1], lng: start[0] },
+        destination: { lat: end[1], lng: end[0] },
+        travelMode: google.maps.TravelMode.DRIVING,
+        optimizeWaypoints: true
+    };
+    
+    directionsService.route(request, (result, status) => {
+        if (status === 'OK') {
+            directionsRenderer.setDirections(result);
+            const route = result.routes[0].legs[0];
+            showStatus(`📍 Route: ${route.distance.text}, ${route.duration.text}`, 'info');
+        }
+    });
+}
+
+// Enhanced notifications with visual effects
+function showEnhancedNotification(message, type, playSound = true) {
+    showStatus(message, type);
+    
+    if (type === 'success') {
+        // Flash screen green
+        document.body.style.backgroundColor = '#dcfce7';
+        setTimeout(() => {
+            document.body.style.backgroundColor = '';
+        }, 300);
+        
+        // Simple success sound
+        if (playSound && window.AudioContext) {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+            } catch (e) {
+                console.log('Audio not available');
+            }
+        }
+    }
+}

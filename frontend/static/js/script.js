@@ -262,61 +262,31 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     }
 
-    async function reverseGeocode(lat, lng) {
-        addressStatus.textContent = "🔄 Converting coordinates to address...";
-        addressStatus.style.color = "#007bff";
-        
-        const url = `${API_URL}/maps/reverse-geocode`;
-        const token = getAuthToken();
-        
-        try {
-            const headers = { 
-                'Content-Type': 'application/json'
-            };
-            
-            // Only add Authorization header if user is authenticated
-            if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
-            }
-            
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify({ lat: lat, lng: lng })
-            });
-            
-            if (!response.ok) {
-                if (response.status === 401) {
-                    // If user is not authenticated, just use coordinates as fallback
-                    addressStatus.textContent = "⚠️ Could not fetch address. Using coordinates.";
-                    addressStatus.style.color = "#ffc107";
-                    addressInput.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-                    return;
-                }
-                throw new Error(`Server error: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            if (data.status === 'OK' && data.results && data.results[0]) {
-                const address = data.results[0].formatted_address;
-                addressInput.value = address;
-                addressStatus.textContent = "✅ Address found! Please confirm it's correct.";
-                addressStatus.style.color = "#28a745";
-            } else {
-                throw new Error(data.error || 'Could not find address.');
-            }
-        } catch (error) {
-            addressStatus.textContent = "⚠️ Could not fetch address. Please enter manually.";
-            addressStatus.style.color = "#ffc107";
-            console.error("Reverse Geocoding Error:", error);
-            
-            // Fallback: try to get a basic address using coordinates
-            addressInput.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-        }
+async function reverseGeocode(lat, lng) {
+    addressStatus.textContent = "🔄 Converting coordinates to address...";
+    addressStatus.style.color = "#007bff";
+    
+    // Skip API call during registration, just use coordinates
+    try {
+        addressInput.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        addressStatus.textContent = "✅ Location coordinates set!";
+        addressStatus.style.color = "#28a745";
+    } catch (error) {
+        addressStatus.textContent = "✅ Using coordinate location";
+        addressStatus.style.color = "#28a745";
+        console.log("Using coordinates instead of address:", error);
+        addressInput.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     }
+}
 
-    async function handleRegister(e) {
-        e.preventDefault();
+async function handleRegister(e) {
+    e.preventDefault();
+    
+    // Prevent double submission
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    if (submitBtn.disabled) return;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Registering...';
         
         // Validate required fields
         const name = document.getElementById('register-name').value.trim();
@@ -335,7 +305,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         if (!currentCoordinates) {
-            showMessage("⚠️ For better accuracy, please select an address from the suggestions or use 'Use My Location'.", 'error');
+            showMessage("⚠️ Please use 'Use My Location' or enter an address first.", 'error');
+            const submitBtn = document.querySelector('#register-form button[type="submit"]');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Register';
             return;
         }
         const body = {
@@ -357,6 +330,11 @@ document.addEventListener('DOMContentLoaded', () => {
             showMessage(data.message, 'success');
         } catch (error) {
             showMessage(error.message, 'error');
+        }
+        finally {
+            // Re-enable button
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Register';
         }
     }
 

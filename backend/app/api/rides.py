@@ -144,10 +144,12 @@ def find_nearby_rides():
             "driver": {
                 "name": driver_info['name'],
                 "rating": driver_info.get('averageRating', 0),
-                "phone": driver_info.get('phone_number', 'Not available')
+                "phone": "Hidden until ride accepted"  # Privacy protection
             },
             "pickup_address": ride['pickup_address'],
             "destination_address": ride['destination_address'],
+            "pickup_coordinates": ride['pickup_location']['coordinates'],  # ADD THIS
+            "destination_coordinates": ride['destination_location']['coordinates'],  # ADD THIS
             "distance_km": round(ride['distance'] / 1000, 2),
             "smart_score": smart_score,
             "suggested_fare": suggested_fare,
@@ -288,20 +290,41 @@ def get_request_status(request_id):
         "updated_at": request_info.get('updated_at', request_info['created_at']).isoformat()
     }
     
-    # Add OTP if request is accepted
+    # FIXED: Status-specific messages and OTP handling
     if request_info['status'] == 'accepted' and 'otp' in request_info:
         response_data['otp'] = request_info['otp']
-        response_data['message'] = "Your ride has been accepted! Share the OTP with your driver."
+        response_data['message'] = f"Driver accepted! Share OTP {request_info['otp']} with your driver."
     elif request_info['status'] == 'rejected':
         response_data['message'] = "Your ride request was declined. Try requesting another ride."
     elif request_info['status'] == 'pending':
         response_data['message'] = "Waiting for driver response..."
     elif request_info['status'] == 'started':
+        response_data['otp'] = request_info.get('otp')  # Keep OTP for reference
         response_data['message'] = "Your ride has started! Enjoy your trip."
     elif request_info['status'] == 'completed':
         response_data['message'] = "Ride completed successfully!"
     
     return jsonify(response_data), 200
+
+
+@rides_bp.route('/cancel-request/<request_id>', methods=['POST'])
+@token_required
+@role_required('rider')
+def cancel_ride_request(request_id):
+    """Cancel ride request"""
+    rider_id = request.current_user['user_id']
+    
+    result = mongo.db.ride_requests.update_one(
+        {"_id": ObjectId(request_id), "rider_id": ObjectId(rider_id), 
+         "status": {"$in": ["pending", "accepted"]}},
+        {"$set": {"status": "cancelled", "updated_at": datetime.datetime.utcnow()}}
+    )
+    
+    if result.modified_count > 0:
+        return jsonify({"message": "Ride cancelled successfully"}), 200
+    else:
+        return jsonify({"error": "Cannot cancel ride"}), 400
+    
 
 @rides_bp.route('/my-requests', methods=['GET'])
 @token_required
@@ -621,7 +644,7 @@ def get_active_ride():
                     "status": active_request['status'],
                     "driver": {
                         "name": driver_info['name'],
-                        "phone": driver_profile.get('phone_number', 'Not available') if driver_profile else 'Not available',
+                        "phone": "Hidden until ride accepted",  # Privacy protection
                         "rating": driver_info.get('averageRating', 0)
                     },
                     "pickup_address": active_request['pickup_address'],
@@ -633,3 +656,70 @@ def get_active_ride():
             }), 200
     
     return jsonify({"has_active_ride": False}), 200
+
+@rides_bp.route('/update-location', methods=['POST'])
+@token_required
+@role_required('driver')
+def update_driver_location():
+    """Update driver's current location during active ride"""
+    data = request.get_json()
+    
+    if 'current_location' not in data:
+        return jsonify({"error": "Current location required"}), 400
+    
+    current_coords = data['current_location']
+    if not isinstance(current_coords, list) or len(current_coords) != 2:
+        return jsonify({"error": "Invalid location format"}), 400
+    
+    driver_id = request.current_user['user_id']
+    
+    # Update active ride with current location
+    result = mongo.db.rides.update_one(
+        {"driver_id": ObjectId(driver_id), "status": "active"},
+        {
+            "$set": {
+                "current_location": {
+                    "type": "Point",
+                    "coordinates": current_coords
+                },
+                "location_updated_at": datetime.datetime.utcnow()
+            }
+        }
+    )
+    
+    if result.matched_count == 0:
+        return jsonify({"error": "No active ride found"}), 404
+    
+    return jsonify({"message": "Location updated successfully"}), 200
+
+@rides_bp.route('/driver-location/<request_id>', methods=['GET'])
+@token_required
+@role_required('rider')
+def get_driver_location(request_id):
+    """Get driver's current location for active ride"""
+    rider_id = request.current_user['user_id']
+    
+    # Find request and get driver's current location
+    request_data = mongo.db.ride_requests.find_one({
+        "_id": ObjectId(request_id),
+        "rider_id": ObjectId(rider_id),
+        "status": {"$in": ["accepted", "started"]}
+    })
+    
+    if not request_data:
+        return jsonify({"error": "Active ride not found"}), 404
+    
+    # Get driver's current location from rides collection
+    driver_ride = mongo.db.rides.find_one({
+        "driver_id": request_data['driver_id'],
+        "status": "active"
+    })
+    
+    response_data = {"status": request_data['status']}
+    
+    if driver_ride and 'current_location' in driver_ride:
+        response_data['driver_location'] = driver_ride['current_location']['coordinates']
+        response_data['location_updated_at'] = driver_ride.get('location_updated_at')
+    
+    return jsonify(response_data), 200
+

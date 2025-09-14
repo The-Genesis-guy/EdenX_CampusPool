@@ -92,7 +92,12 @@ def complete_profile():
         result = mongo.db.user_profiles.insert_one(profile_data)
         message = "Profile completed successfully!"
     
-    if result.modified_count > 0 or result.inserted_id:
+    if hasattr(result, 'modified_count') and result.modified_count > 0:
+        return jsonify({
+            "message": message,
+            "profile_complete": True
+        }), 200
+    elif hasattr(result, 'inserted_id') and result.inserted_id:
         return jsonify({
             "message": message,
             "profile_complete": True

@@ -46,10 +46,6 @@ def create_app():
         maps_api_key = app.config.get('GOOGLE_MAPS_API_KEY', '')
         return render_template("driver_dashboard.html", maps_api_key=maps_api_key)
 
-    @app.route("/profile")
-    def profile():
-        maps_api_key = app.config.get('GOOGLE_MAPS_API_KEY', '')
-        return render_template("profile.html", maps_api_key=maps_api_key)
 
     # -------------------------
     # Health Check
