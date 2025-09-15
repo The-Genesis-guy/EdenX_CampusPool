@@ -21,6 +21,7 @@ const API_URL = 'http://127.0.0.1:5000/api';
 // Initialize Google Maps callback
 window.initDriverApp = function() {
     console.log('Google Maps API loaded for driver dashboard');
+    initializeMap();
     initializeAutocomplete();
 };
 
@@ -89,6 +90,9 @@ document.addEventListener('DOMContentLoaded', () => {
     loadUserProfile();
     checkProfileCompletion();
     checkForActiveRide();
+    
+    // Automatically fetch current location when page loads
+    getCurrentLocation();
 });
 
 // Check for active ride on page load
@@ -122,7 +126,7 @@ async function checkForActiveRide() {
     }
 }
 
-// Initialize event listeners
+// Initialize event listeners for Map-First design
 function initializeEventListeners() {
     // Toggle switch
     const onlineToggle = document.getElementById('online-toggle');
@@ -131,26 +135,85 @@ function initializeEventListeners() {
     }
     
     // Location buttons
-    const currentLocationBtn = document.getElementById('current-location-btn');
-    if (currentLocationBtn) {
-        currentLocationBtn.addEventListener('click', getCurrentLocation);
-    }
-    
     const collegeLocationBtn = document.getElementById('college-location-btn');
     if (collegeLocationBtn) {
         collegeLocationBtn.addEventListener('click', setCollegeDestination);
     }
     
-    // Start ride button
-    const startRideBtn = document.getElementById('start-ride-btn');
-    if (startRideBtn) {
-        startRideBtn.addEventListener('click', startAcceptingRequests);
+    // Start helping button (renamed from start-ride-btn)
+    const startHelpingBtn = document.getElementById('start-helping-btn');
+    if (startHelpingBtn) {
+        startHelpingBtn.addEventListener('click', startAcceptingRequests);
     }
     
-    // Refresh requests
-    const refreshRequestsBtn = document.getElementById('refresh-requests-btn');
-    if (refreshRequestsBtn) {
-        refreshRequestsBtn.addEventListener('click', loadRideRequests);
+    // Campus quick buttons
+    const quickButtons = document.querySelectorAll('.quick-btn');
+    quickButtons.forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const destination = e.target.getAttribute('data-destination');
+            if (destination) {
+                document.getElementById('destination-input').value = destination;
+                
+                // Set coordinates for common destinations
+                if (destination.includes('Home')) {
+                    // For home, try to get user's current location or use a default
+                    try {
+                        if (navigator.geolocation) {
+                            const position = await new Promise((resolve, reject) => {
+                                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                                    enableHighAccuracy: true,
+                                    timeout: 5000,
+                                    maximumAge: 300000
+                                });
+                            });
+                            destinationCoordinates = [position.coords.longitude, position.coords.latitude];
+                            
+                            // Reverse geocode to get address
+                            reverseGeocode(position.coords.latitude, position.coords.longitude, (address) => {
+                                document.getElementById('destination-input').value = address;
+                            });
+                        } else {
+                            // Fallback to college coordinates if geolocation fails
+                            destinationCoordinates = COLLEGE_COORDS;
+                            document.getElementById('destination-input').value = COLLEGE_ADDRESS;
+                        }
+                    } catch (error) {
+                        console.error('Failed to get current location for home:', error);
+                        // Fallback to college coordinates
+                        destinationCoordinates = COLLEGE_COORDS;
+                        document.getElementById('destination-input').value = COLLEGE_ADDRESS;
+                    }
+                } else if (destination.includes('College')) {
+                    destinationCoordinates = COLLEGE_COORDS;
+                    document.getElementById('destination-input').value = COLLEGE_ADDRESS;
+                }
+                
+                // Remove active class from all buttons
+                quickButtons.forEach(b => b.classList.remove('active'));
+                // Add active class to clicked button
+                e.target.classList.add('active');
+                
+                showStatus(`${destination} location set successfully`, 'success');
+                
+                // Compress the helper card when destination is set
+                compressHelperCard();
+            }
+        });
+    });
+    
+    // Close buttons for floating cards
+    const closeResultsBtn = document.getElementById('close-results-btn');
+    if (closeResultsBtn) {
+        closeResultsBtn.addEventListener('click', () => {
+            document.getElementById('results-card').classList.add('hidden');
+        });
+    }
+    
+    const closeRequestsBtn = document.getElementById('close-requests-btn');
+    if (closeRequestsBtn) {
+        closeRequestsBtn.addEventListener('click', () => {
+            document.getElementById('requests-card').classList.add('hidden');
+        });
     }
     
     // Profile form
@@ -165,59 +228,117 @@ function initializeEventListeners() {
         closeOtpModal.addEventListener('click', closeOtpModal);
     }
     
-    // Pre-booking marketplace (optional - only if element exists)
-    const viewPreBooksBtn = document.getElementById('view-prebooks-btn');
-    if (viewPreBooksBtn) {
-        viewPreBooksBtn.addEventListener('click', showPreBookingMarketplace);
+    // Request modal buttons
+    const acceptRequestBtn = document.getElementById('accept-request-btn');
+    if (acceptRequestBtn) {
+        acceptRequestBtn.addEventListener('click', () => {
+            // This will be handled by the request card click handlers
+        });
     }
     
-    const browsePreBooksBtn = document.getElementById('browse-prebooks-btn');
-    if (browsePreBooksBtn) {
-        browsePreBooksBtn.addEventListener('click', loadPreBookingRequests);
+    const declineRequestBtn = document.getElementById('decline-request-btn');
+    if (declineRequestBtn) {
+        declineRequestBtn.addEventListener('click', () => {
+            // This will be handled by the request card click handlers
+        });
     }
     
-    const myAcceptedPreBooksBtn = document.getElementById('my-accepted-prebooks-btn');
-    if (myAcceptedPreBooksBtn) {
-        myAcceptedPreBooksBtn.addEventListener('click', loadMyAcceptedPreBooks);
+    // View requests button
+    const viewRequestsBtn = document.getElementById('view-requests-btn');
+    if (viewRequestsBtn) {
+        viewRequestsBtn.addEventListener('click', () => {
+            const requestsCard = document.getElementById('requests-card');
+            if (requestsCard) {
+                requestsCard.classList.remove('hidden');
+                requestsCard.classList.add('show');
+                // Refresh the requests
+                if (isOnline) {
+                    loadRideRequests();
+                }
+            }
+        });
+    }
+}
+
+// Initialize Google Maps
+let map;
+let userMarker;
+
+function initializeMap() {
+    // Initialize the full-screen map
+    map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 15,
+        center: { lat: 13.05794, lng: 77.64038 }, // Kristu Jayanti College
+        mapTypeId: google.maps.MapTypeId.ROADMAP,
+        styles: [
+            {
+                featureType: 'poi',
+                elementType: 'labels',
+                stylers: [{ visibility: 'off' }]
+            }
+        ]
+    });
+
+    // Add college marker
+    const collegeMarker = new google.maps.Marker({
+        position: { lat: 13.05794, lng: 77.64038 },
+        map: map,
+        title: 'Kristu Jayanti College',
+        icon: {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="20" cy="20" r="18" fill="#FF6B35" stroke="#fff" stroke-width="2"/>
+                    <text x="20" y="26" text-anchor="middle" fill="white" font-size="16" font-weight="bold">🏫</text>
+                </svg>
+            `),
+            scaledSize: new google.maps.Size(40, 40)
+        }
+    });
+
+    // Get user's current location
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((position) => {
+            const userLocation = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude
+            };
+            
+            // Center map on user location
+            map.setCenter(userLocation);
+            
+            // Add user marker
+            userMarker = new google.maps.Marker({
+                position: userLocation,
+                map: map,
+                title: 'Your Location',
+                icon: {
+                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                        <svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="15" cy="15" r="12" fill="#004E89" stroke="#fff" stroke-width="2"/>
+                            <text x="15" y="20" text-anchor="middle" fill="white" font-size="12" font-weight="bold">🏍️</text>
+                        </svg>
+                    `),
+                    scaledSize: new google.maps.Size(30, 30)
+                }
+            });
+        });
     }
 }
 
 // Initialize Google Maps autocomplete
 function initializeAutocomplete() {
-    const pickupInput = document.getElementById('pickup-input');
     const destinationInput = document.getElementById('destination-input');
     
-    if (!pickupInput || !destinationInput) {
-        console.error('Input elements not found');
+    if (!destinationInput) {
+        console.error('Destination input element not found');
         return;
     }
 
-    // Initialize autocomplete for pickup
-    const pickupAutocomplete = new google.maps.places.Autocomplete(pickupInput, {
-        types: ['establishment', 'geocode'],
-        componentRestrictions: { country: 'in' },
-        fields: ['formatted_address', 'geometry', 'name']
-    });
-
-    // Initialize autocomplete for destination
+    // Initialize autocomplete for destination only
     const destinationAutocomplete = new google.maps.places.Autocomplete(destinationInput, {
         types: ['establishment', 'geocode'],
         componentRestrictions: { country: 'in' },
         fields: ['formatted_address', 'geometry', 'name']
-    });
-
-    // Handle pickup place selection
-    pickupAutocomplete.addListener('place_changed', () => {
-        const place = pickupAutocomplete.getPlace();
-        if (place.geometry && place.geometry.location) {
-            const address = place.name && place.name !== place.formatted_address 
-                ? `${place.name}, ${place.formatted_address}` 
-                : place.formatted_address;
-            
-            pickupInput.value = address;
-            pickupCoordinates = [place.geometry.location.lng(), place.geometry.location.lat()];
-            console.log('Pickup location set:', address, pickupCoordinates);
-        }
     });
 
     // Handle destination place selection
@@ -231,6 +352,9 @@ function initializeAutocomplete() {
             destinationInput.value = address;
             destinationCoordinates = [place.geometry.location.lng(), place.geometry.location.lat()];
             console.log('Destination location set:', address, destinationCoordinates);
+            
+            // Compress the helper card when destination is selected
+            compressHelperCard();
         }
     });
 }
@@ -250,12 +374,19 @@ function setOnlineState(online) {
 // Toggle online/offline status
 function toggleOnlineStatus() {
     const toggle = document.getElementById('online-toggle');
+    const statusIndicator = document.querySelector('.status-indicator');
+    const routeSetup = document.getElementById('route-setup');
+    const helperStats = document.getElementById('helper-stats');
     
     if (!isOnline) {
         // Going online - show route setup
         toggle.classList.add('active');
-        document.getElementById('route-section').classList.remove('hidden');
-        showStatus('Set your route to start accepting requests', 'info');
+        statusIndicator.classList.remove('offline');
+        statusIndicator.classList.add('online');
+        statusIndicator.querySelector('.status-text').textContent = 'Available to help community';
+        routeSetup.classList.remove('hidden');
+        helperStats.classList.add('hidden');
+        showStatus('Set your route to start helping the community!', 'info');
     } else {
         // Going offline
         goOffline();
@@ -275,12 +406,11 @@ function getCurrentLocation() {
         (position) => {
             const { latitude, longitude } = position.coords;
             currentLocation = [longitude, latitude];
+            pickupCoordinates = [longitude, latitude];
             
-            // Reverse geocode to get address
+            // Reverse geocode to get address for display
             reverseGeocode(latitude, longitude, (address) => {
-                document.getElementById('pickup-input').value = address;
-                pickupCoordinates = [longitude, latitude];
-                showStatus('Current location set as starting point', 'success');
+                showStatus(`Location detected: ${address}`, 'success');
             });
         },
         (error) => {
@@ -326,23 +456,32 @@ async function startAcceptingRequests() {
     }
 
     try {
+        const seatsAvailable = document.getElementById('available-seats').value;
+        const helperMessage = document.getElementById('helper-message').value;
+        
         const response = await apiCall('/rides/go-live', 'POST', {
             pickup_location: pickupCoordinates,
             destination_location: destinationCoordinates,
-            pickup_address: document.getElementById('pickup-input').value,
+            pickup_address: 'Current Location', // Auto-detected location
             destination_address: document.getElementById('destination-input').value,
-            seats_available: 1
+            seats_available: parseInt(seatsAvailable),
+            helper_message: helperMessage
         });
 
         activeRideId = response.ride_id;
         isOnline = true;
         
-        // Update UI
-        document.getElementById('route-section').classList.add('hidden');
-        document.getElementById('online-status').classList.remove('hidden');
-        document.getElementById('requests-section').classList.remove('hidden');
+        // Update UI for Map-First design
+        const routeSetup = document.getElementById('route-setup');
+        const helperStats = document.getElementById('helper-stats');
+        const requestsCard = document.getElementById('requests-card');
         
-        showStatus('You are now online and accepting requests!', 'success');
+        routeSetup.classList.add('hidden');
+        helperStats.classList.remove('hidden');
+        requestsCard.classList.remove('hidden');
+        requestsCard.classList.add('show');
+        
+        showStatus('🤝 You are now helping the community! Ride requests will appear here.', 'success');
         
         // Start polling for requests
         startRequestsPolling();
@@ -354,17 +493,25 @@ async function startAcceptingRequests() {
         showStatus(error.message || 'Failed to go online. Please try again.', 'error');
         
         // Reset toggle
-        document.getElementById('online-toggle').classList.remove('active');
-        document.getElementById('route-section').classList.add('hidden');
+        const toggle = document.getElementById('online-toggle');
+        const statusIndicator = document.querySelector('.status-indicator');
+        const routeSetup = document.getElementById('route-setup');
+        
+        toggle.classList.remove('active');
+        statusIndicator.classList.remove('online');
+        statusIndicator.classList.add('offline');
+        statusIndicator.querySelector('.status-text').textContent = 'Taking a break';
+        routeSetup.classList.add('hidden');
     }
 }
 
 // Go offline
 async function goOffline() {
     try {
-        if (activeRideId) {
-            await apiCall('/rides/go-offline', 'POST');
-        }
+        // Always call go-offline API to update driver availability status
+        console.log('Going offline - calling /rides/go-offline API');
+        await apiCall('/rides/go-offline', 'POST');
+        console.log('Successfully went offline');
         
         // Update state
         isOnline = false;
@@ -372,19 +519,31 @@ async function goOffline() {
         acceptedRequestId = null;
         currentOTP = null;
         
-        // Update UI
+        // Update UI for Map-First design
         const toggle = document.getElementById('online-toggle');
+        const statusIndicator = document.querySelector('.status-indicator');
+        const routeSetup = document.getElementById('route-setup');
+        const helperStats = document.getElementById('helper-stats');
+        const requestsCard = document.getElementById('requests-card');
+        const activeRideCard = document.getElementById('active-ride-card');
+        
         toggle.classList.remove('active');
-        document.getElementById('route-section').classList.add('hidden');
-        document.getElementById('online-status').classList.add('hidden');
-        document.getElementById('requests-section').classList.add('hidden');
-        document.getElementById('active-ride-section').classList.add('hidden');
+        statusIndicator.classList.remove('online');
+        statusIndicator.classList.add('offline');
+        statusIndicator.querySelector('.status-text').textContent = 'Taking a break';
+        
+        routeSetup.classList.add('hidden');
+        helperStats.classList.add('hidden');
+        requestsCard.classList.add('hidden');
+        requestsCard.classList.remove('show');
+        activeRideCard.classList.add('hidden');
+        activeRideCard.classList.remove('show');
         
         // Stop polling
         stopRequestsPolling();
         stopLocationTracking();
         
-        showStatus('You are now offline', 'info');
+        showStatus('You are now offline. Toggle to go online when ready to help!', 'info');
         
     } catch (error) {
         console.error('Failed to go offline:', error);
@@ -428,13 +587,20 @@ async function loadRideRequests() {
 
 // Display ride requests
 function displayRideRequests(requests) {
-    const container = document.getElementById('requests-list');
-    const noRequestsEl = document.getElementById('no-requests');
+    const container = document.getElementById('ride-requests-list');
+    const noRequestsEl = document.getElementById('no-ride-requests');
+    const requestsCard = document.getElementById('requests-card');
     
     if (requests.length === 0) {
         container.innerHTML = '';
         noRequestsEl.classList.remove('hidden');
         return;
+    }
+    
+    // If we have requests, automatically show the requests card
+    if (requestsCard) {
+        requestsCard.classList.remove('hidden');
+        requestsCard.classList.add('show');
     }
     
     noRequestsEl.classList.add('hidden');
@@ -449,30 +615,44 @@ function displayRideRequests(requests) {
 // Create individual request card
 function createRequestCard(request) {
     const card = document.createElement('div');
-    card.className = 'request-card';
+    card.className = 'ride-request-card';
     card.innerHTML = `
         <div class="request-header">
             <div class="rider-info">
-                <h4>${request.rider.name}</h4>
-                <div class="driver-rating">
-                    ⭐ ${request.rider.rating.toFixed(1)} • Phone: ${request.rider.phone}
+                <div class="rider-avatar">👤</div>
+                <div class="rider-details">
+                    <h4>${request.rider.name}</h4>
+                    <div class="rider-meta">
+                        ⭐ ${request.rider.rating.toFixed(1)} • ${request.rider.phone}
+                    </div>
                 </div>
             </div>
             <div class="request-time">
                 ${request.requested_at}
             </div>
         </div>
-        <div class="request-details">
-            <strong>Pickup:</strong> ${request.pickup_address}<br>
-            <strong>Destination:</strong> ${request.destination_address}<br>
-            <strong>Estimated Fare:</strong> ₹${request.estimated_fare}
+        
+        ${request.rider_message ? `
+        <div class="request-message">
+            "${request.rider_message}"
         </div>
+        ` : ''}
+        
+        <div class="request-route">
+            📍 ${request.pickup_address} → 🎯 ${request.destination_address}
+        </div>
+        
+        <div class="request-cost">
+            <span>Split cost:</span>
+            <span class="cost-info">₹${request.estimated_fare}</span>
+        </div>
+        
         <div class="request-actions">
-            <button class="btn btn-danger" onclick="respondToRequest('${request.request_id}', 'reject')">
-                Decline
+            <button class="btn btn-outline" onclick="respondToRequest('${request.request_id}', 'reject')">
+                ❌ Sorry, can't help
             </button>
-            <button class="btn btn-secondary" onclick="respondToRequest('${request.request_id}', 'accept')">
-                Accept
+            <button class="btn btn-primary" onclick="respondToRequest('${request.request_id}', 'accept')">
+                ✅ Sure! Let's ride together
             </button>
         </div>
     `;
@@ -490,10 +670,18 @@ window.respondToRequest = async function(requestId, action) {
             acceptedRequestId = requestId;
             currentOTP = response.otp;
             
-            // Hide requests section and show active ride
-            document.getElementById('requests-section').classList.add('hidden');
+            // Hide requests card
+            const requestsCard = document.getElementById('requests-card');
+            if (requestsCard) {
+                requestsCard.classList.add('hidden');
+                requestsCard.classList.remove('show');
+            }
             
+            // Show OTP modal for driver to verify with rider
             showOtpModal(response.otp, response.note);
+            
+            // Show status message - no active ride interface yet
+            showStatus('✅ Request accepted! Please verify OTP with rider to start the ride.', 'success');
             
             // Stop polling for new requests
             stopRequestsPolling();
@@ -520,9 +708,9 @@ function showOtpModal(otp, note) {
     const detailsContainer = document.getElementById('otp-details');
     
     detailsContainer.innerHTML = `
-        <div style="background: var(--background-color); padding: 1.5rem; border-radius: 1rem; margin-bottom: 1rem;">
-            <h4 style="font-size: 2rem; color: var(--secondary-color); margin-bottom: 0.5rem; text-align: center;">${otp}</h4>
-            <p style="color: var(--text-secondary); margin-bottom: 0; text-align: center;">${note}</p>
+        <div style="background: var(--background-color); padding: 1.5rem; border-radius: 1rem; margin-bottom: 1rem; text-align: center;">
+            <h4 style="color: var(--secondary-color); margin-bottom: 0.5rem;">🔐 OTP Verification</h4>
+            <p style="color: var(--text-secondary); margin-bottom: 0;">Ask the rider for their OTP to start the trip</p>
         </div>
         <div style="background: #dcfce7; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
             <h5 style="margin: 0 0 0.5rem 0; color: #166534;">📍 Next Steps:</h5>
@@ -591,30 +779,87 @@ async function verifyOTP() {
 }
 
 // Show active ride in progress
-function showActiveRideInProgress() {
-    const activeSection = document.getElementById('active-ride-section');
-    const detailsContainer = document.getElementById('active-ride-details');
+async function showActiveRideInProgress() {
+    const activeRideCard = document.getElementById('active-ride-card');
     
-    detailsContainer.innerHTML = `
-        <div style="background: #dcfce7; padding: 1.5rem; border-radius: 1rem; margin-bottom: 1.5rem; text-align: center;">
-            <h4 style="color: #166534; margin-bottom: 0.5rem;">🚗 Ride In Progress</h4>
-            <p style="color: #166534; margin: 0; font-size: 0.875rem;">Drive safely to the destination</p>
-        </div>
-        <div style="background: var(--background-color); padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
-            <p><strong>Request ID:</strong> ${acceptedRequestId}</p>
-            <p style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">
-                Click "Complete Ride" when you reach the destination and the rider gets off.
-            </p>
-        </div>
-        <button id="complete-ride-btn" class="btn btn-primary btn-full">
-            🏁 Complete Ride
-        </button>
-    `;
+    // Fetch real rider data from backend
+    try {
+        const response = await apiCall('/rides/active-ride', 'GET');
+        if (response.has_active_ride && response.ride_info) {
+            const rideInfo = response.ride_info;
+            
+            // Update the active ride card content with real data
+            const rideStatus = activeRideCard.querySelector('.ride-status');
+            if (rideStatus) {
+                rideStatus.textContent = 'In Transit';
+            }
+            
+            // Populate ride buddies with real rider data
+            const buddiesList = document.getElementById('active-ride-buddies');
+            if (buddiesList) {
+                buddiesList.innerHTML = `
+                    <div class="ride-buddy-item">
+                        <div class="buddy-info">
+                            <span class="buddy-role">🏍️</span>
+                            <span class="buddy-name">You (Helper)</span>
+                        </div>
+                    </div>
+                    <div class="ride-buddy-item">
+                        <div class="buddy-info">
+                            <span class="buddy-role">🎒</span>
+                            <span class="buddy-name">${rideInfo.rider?.name || 'Rider'}</span>
+                        </div>
+                        <div class="buddy-contact">
+                            <span class="contact-label">📞 Phone:</span>
+                            <span class="contact-info">${rideInfo.rider?.phone || 'Not provided'}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Show helpful chat messages
+            const chatMessages = document.getElementById('active-ride-chat');
+            if (chatMessages) {
+                chatMessages.innerHTML = `
+                    <div class="chat-message">
+                        <span class="sender">System:</span>
+                        <span class="message">Ride started! You can call the rider using the contact details above.</span>
+                    </div>
+                    <div class="chat-message">
+                        <span class="sender">System:</span>
+                        <span class="message">Share your location with the rider for better coordination.</span>
+                    </div>
+                `;
+            }
+            
+            // Update ETA
+            const etaElement = document.getElementById('active-ride-eta');
+            if (etaElement) {
+                etaElement.textContent = 'Calculating...';
+            }
+            
+            // Add event listeners for action buttons
+            const callBtn = activeRideCard.querySelector('#call-driver-btn'); // This ID is for rider, should be #call-rider-btn for driver
+            if (callBtn && rideInfo.rider?.phone) {
+                callBtn.addEventListener('click', () => {
+                    window.open(`tel:${rideInfo.rider.phone}`, '_self');
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Failed to fetch active ride data:', error);
+        showStatus('Failed to load ride details', 'error');
+    }
     
-    activeSection.classList.remove('hidden');
+    // Show the active ride card
+    activeRideCard.classList.remove('hidden');
+    activeRideCard.classList.add('show');
     
-    // Add event listener for complete ride button
-    document.getElementById('complete-ride-btn').addEventListener('click', completeRide);
+    // Add event listener for complete ride button if it exists
+    const completeRideBtn = activeRideCard.querySelector('.btn-secondary');
+    if (completeRideBtn && completeRideBtn.textContent.includes('Complete Ride')) {
+        completeRideBtn.addEventListener('click', completeRide);
+    }
 }
 
 // Complete the ride
@@ -633,15 +878,20 @@ async function completeRide() {
             request_id: acceptedRequestId
         });
         
-        showStatus('🎉 Ride completed successfully!', 'success');
+        showStatus('🎉 Ride completed successfully! Thank you for helping the community!', 'success');
         
         // Reset state
         acceptedRequestId = null;
         currentOTP = null;
         
-        // Hide active ride section and show requests section
-        document.getElementById('active-ride-section').classList.add('hidden');
-        document.getElementById('requests-section').classList.remove('hidden');
+        // Hide active ride card and show requests card
+        const activeRideCard = document.getElementById('active-ride-card');
+        const requestsCard = document.getElementById('requests-card');
+        
+        activeRideCard.classList.add('hidden');
+        activeRideCard.classList.remove('show');
+        requestsCard.classList.remove('hidden');
+        requestsCard.classList.add('show');
         
         // Restart polling for new requests
         startRequestsPolling();
@@ -654,42 +904,24 @@ async function completeRide() {
 
 // Show active ride section with ride info
 function showActiveRideSection(rideInfo) {
-    const activeSection = document.getElementById('active-ride-section');
-    const detailsContainer = document.getElementById('active-ride-details');
-    
-    let content = '';
+    const activeRideCard = document.getElementById('active-ride-card');
+    const rideStatus = activeRideCard.querySelector('.ride-status');
     
     if (rideInfo.status === 'accepted') {
-        content = `
-            <div style="background: #fef3c7; padding: 1.5rem; border-radius: 1rem; margin-bottom: 1rem; text-align: center;">
-                <h4 style="color: #92400e; margin-bottom: 0.5rem;">🔄 Waiting for Rider</h4>
-                <p style="color: #92400e; margin: 0; font-size: 0.875rem;">Share OTP with rider to start the trip</p>
-            </div>
-            <div style="background: var(--background-color); padding: 1rem; border-radius: 0.5rem;">
-                <p><strong>Rider:</strong> ${rideInfo.rider.name}</p>
-                <p><strong>Phone:</strong> ${rideInfo.rider.phone}</p>
-                <p><strong>OTP:</strong> <span style="font-size: 1.5rem; color: var(--secondary-color); font-weight: bold;">${rideInfo.otp}</span></p>
-            </div>
-        `;
+        if (rideStatus) {
+            rideStatus.textContent = 'Waiting for Rider';
+        }
+        showOtpModal(rideInfo.otp, "Ask the rider for their OTP to start the trip");
     } else if (rideInfo.status === 'started') {
-        content = `
-            <div style="background: #dcfce7; padding: 1.5rem; border-radius: 1rem; margin-bottom: 1rem; text-align: center;">
-                <h4 style="color: #166534; margin-bottom: 0.5rem;">🚗 Ride In Progress</h4>
-                <p style="color: #166534; margin: 0; font-size: 0.875rem;">Drive safely to the destination</p>
-            </div>
-            <button id="complete-ride-btn" class="btn btn-primary btn-full">
-                🏁 Complete Ride
-            </button>
-        `;
+        if (rideStatus) {
+            rideStatus.textContent = 'In Transit';
+        }
+        showActiveRideInProgress();
     }
     
-    detailsContainer.innerHTML = content;
-    activeSection.classList.remove('hidden');
-    
-    // Add event listeners if needed
-    if (rideInfo.status === 'started') {
-        document.getElementById('complete-ride-btn')?.addEventListener('click', completeRide);
-    }
+    // Show the active ride card
+    activeRideCard.classList.remove('hidden');
+    activeRideCard.classList.add('show');
 }
 
 // Close OTP modal
@@ -729,7 +961,7 @@ async function reverseGeocode(lat, lng, callback) {
 function showStatus(message, type) {
     const statusEl = document.getElementById('status-message');
     statusEl.textContent = message;
-    statusEl.className = `status-message status-${type}`;
+    statusEl.className = `floating-status status-${type}`;
     statusEl.classList.remove('hidden');
     
     // Auto-hide success and info messages after 7 seconds
@@ -805,11 +1037,46 @@ window.addEventListener('beforeunload', () => {
 
 // Logout function
 window.handleLogout = async function() {
+    // Check if user has active rides
+    let hasActiveRide = false;
+    let warningMessage = '';
+    
+    if (isOnline) {
+        hasActiveRide = true;
+        warningMessage += 'You are currently online and helping the community. ';
+    }
+    
+    if (acceptedRequestId) {
+        hasActiveRide = true;
+        warningMessage += 'You have an active ride in progress. ';
+    }
+    
+    if (hasActiveRide) {
+        warningMessage += 'Logging out will cancel any active rides and go offline. Are you sure you want to continue?';
+        
+        if (!confirm(warningMessage)) {
+            return; // User cancelled logout
+        }
+    }
+    
     try {
         // Go offline first if online
         if (isOnline) {
             await goOffline();
         }
+        
+        // Cancel any active ride requests
+        if (acceptedRequestId) {
+            try {
+                await apiCall(`/rides/cancel-request/${acceptedRequestId}`, 'POST');
+            } catch (error) {
+                console.error('Failed to cancel active ride:', error);
+            }
+        }
+        
+        // Stop all polling and tracking
+        stopRequestsPolling();
+        stopLocationTracking();
         
         await apiCall('/auth/logout', 'POST');
     } catch (error) {
@@ -819,6 +1086,148 @@ window.handleLogout = async function() {
         window.location.href = '/';
     }
 };
+
+// Card compression functions
+function compressHelperCard() {
+    const helperCard = document.querySelector('.floating-helper-card');
+    if (helperCard) {
+        helperCard.classList.add('compressed');
+        
+        // Add click listener to expand when clicked
+        helperCard.addEventListener('click', expandHelperCard, { once: true });
+    }
+}
+
+function expandHelperCard() {
+    const helperCard = document.querySelector('.floating-helper-card');
+    if (helperCard) {
+        helperCard.classList.remove('compressed');
+    }
+}
+
+// Active ride functions
+async function showActiveRide(rideInfo) {
+    const activeRideCard = document.getElementById('active-ride-card');
+    if (!activeRideCard) return;
+    
+    // Hide other cards
+    const requestsCard = document.getElementById('requests-card');
+    const helperStats = document.getElementById('helper-stats');
+    if (requestsCard) requestsCard.classList.add('hidden');
+    if (helperStats) helperStats.classList.add('hidden');
+    
+    // Fetch real rider data from backend
+    try {
+        const response = await apiCall('/rides/active-ride', 'GET');
+        if (response.has_active_ride && response.ride_info) {
+            const realRideInfo = response.ride_info;
+            
+            // Populate ride buddies with real contact information
+            const buddiesList = document.getElementById('active-ride-buddies');
+            if (buddiesList) {
+                buddiesList.innerHTML = `
+                    <div class="ride-buddy-item">
+                        <div class="buddy-info">
+                            <span class="buddy-role">🏍️</span>
+                            <span class="buddy-name">You (Helper)</span>
+                        </div>
+                    </div>
+                    <div class="ride-buddy-item">
+                        <div class="buddy-info">
+                            <span class="buddy-role">🎒</span>
+                            <span class="buddy-name">${realRideInfo.rider?.name || 'Rider'}</span>
+                        </div>
+                        <div class="buddy-contact">
+                            <span class="contact-label">📞 Phone:</span>
+                            <span class="contact-info">${realRideInfo.rider?.phone || 'Not provided'}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Show helpful chat messages
+            const chatMessages = document.getElementById('active-ride-chat');
+            if (chatMessages) {
+                chatMessages.innerHTML = `
+                    <div class="chat-message">
+                        <span class="sender">System:</span>
+                        <span class="message">Ride started! You can call the rider using the contact details above.</span>
+                    </div>
+                    <div class="chat-message">
+                        <span class="sender">System:</span>
+                        <span class="message">Share your location with the rider for better coordination.</span>
+                    </div>
+                `;
+            }
+            
+            // Update ETA
+            const etaElement = document.getElementById('active-ride-eta');
+            if (etaElement) {
+                etaElement.textContent = 'Calculating...';
+            }
+            
+            // Add event listeners for action buttons
+            const callBtn = activeRideCard.querySelector('#call-driver-btn');
+            if (callBtn && realRideInfo.rider?.phone) {
+                callBtn.addEventListener('click', () => {
+                    window.open(`tel:${realRideInfo.rider.phone}`, '_self');
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Failed to fetch active ride data:', error);
+        showStatus('Failed to load ride details', 'error');
+    }
+    
+    // Show active ride card
+    activeRideCard.classList.remove('hidden');
+    activeRideCard.classList.add('show');
+}
+
+function hideActiveRide() {
+    const activeRideCard = document.getElementById('active-ride-card');
+    if (activeRideCard) {
+        activeRideCard.classList.add('hidden');
+        activeRideCard.classList.remove('show');
+    }
+}
+
+// Handle accepting a ride request
+async function acceptRideRequest(requestId) {
+    try {
+        showStatus('Accepting ride request...', 'info');
+        
+        const response = await apiCall(`/rides/accept-request/${requestId}`, 'POST');
+        
+        // Hide requests card and show active ride
+        document.getElementById('requests-card').classList.add('hidden');
+        showActiveRide(response.ride_info);
+        
+        showStatus('Ride request accepted! Ask rider for OTP to start trip.', 'success');
+        
+    } catch (error) {
+        console.error('Failed to accept ride request:', error);
+        showStatus('Failed to accept ride request. Please try again.', 'error');
+    }
+}
+
+// Handle declining a ride request
+async function declineRideRequest(requestId) {
+    try {
+        showStatus('Declining ride request...', 'info');
+        
+        await apiCall(`/rides/decline-request/${requestId}`, 'POST');
+        
+        // Refresh requests list
+        loadRideRequests();
+        
+        showStatus('Ride request declined.', 'info');
+        
+    } catch (error) {
+        console.error('Failed to decline ride request:', error);
+        showStatus('Failed to decline ride request. Please try again.', 'error');
+    }
+}
 
 
 

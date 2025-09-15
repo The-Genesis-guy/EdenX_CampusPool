@@ -96,12 +96,21 @@ function initializePlacesAutocomplete() {
 document.addEventListener('DOMContentLoaded', () => {
     const API_URL = 'http://127.0.0.1:5000/api';
 
+    // Landing page elements
+    const landingPage = document.getElementById('landing-page');
+    const authForms = document.getElementById('auth-forms');
+    const findRidesBtn = document.getElementById('find-rides-btn');
+    const offerRidesBtn = document.getElementById('offer-rides-btn');
+
+    // Auth form elements
     const loginForm = document.getElementById('login-form');
     const registerForm = document.getElementById('register-form');
     const messageArea = document.getElementById('message-area');
     const appView = document.getElementById('app-view');
     const showLoginLink = document.getElementById('show-login-link');
     const showRegisterLink = document.getElementById('show-register-link');
+    const showLoginFromRegister = document.getElementById('show-login-from-register');
+    const showRegisterFromLogin = document.getElementById('show-register-from-login');
     const getLocationBtn = document.getElementById('get-location-btn');
     const addressInput = document.getElementById('register-address');
     const addressStatus = document.getElementById('address-status');
@@ -141,10 +150,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, 5000);
 
+    // Landing page event listeners
+    findRidesBtn.addEventListener('click', () => showRegister('rider'));
+    offerRidesBtn.addEventListener('click', () => showRegister('driver'));
+    
+    // Auth form event listeners
     registerForm.addEventListener('submit', handleRegister);
     loginForm.addEventListener('submit', handleLogin);
     showLoginLink.addEventListener('click', showLogin);
     showRegisterLink.addEventListener('click', showRegister);
+    showLoginFromRegister.addEventListener('click', showLogin);
+    showRegisterFromLogin.addEventListener('click', showRegister);
     getLocationBtn.addEventListener('click', handleGetLocation);
 
     async function verifyTokenAndShowApp() {
@@ -173,6 +189,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showApp() {
+        landingPage.classList.add('hidden');
+        authForms.classList.add('hidden');
         loginForm.classList.add('hidden');
         registerForm.classList.add('hidden');
         messageArea.classList.add('hidden');
@@ -445,17 +463,29 @@ if (data.user.role === 'rider') {
     }
 
     function showLogin() {
+        landingPage.classList.add('hidden');
+        authForms.classList.remove('hidden');
         loginForm.classList.remove('hidden');
         registerForm.classList.add('hidden');
         messageArea.classList.add('hidden');
         appView.classList.add('hidden');
     }
 
-    function showRegister() {
+    function showRegister(role = null) {
+        landingPage.classList.add('hidden');
+        authForms.classList.remove('hidden');
         loginForm.classList.add('hidden');
         registerForm.classList.remove('hidden');
         messageArea.classList.add('hidden');
         appView.classList.add('hidden');
+        
+        // Pre-select role if provided
+        if (role) {
+            const roleInput = document.querySelector(`input[name="role"][value="${role}"]`);
+            if (roleInput) {
+                roleInput.checked = true;
+            }
+        }
     }
 
     // Add logout functionality

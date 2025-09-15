@@ -3,175 +3,156 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CampusPool - Find Your Ride</title>
+    <title>🎓 CampusPool - Find Your Ride Buddies</title>
     <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
 <body>
-    <div class="dashboard-container">
-        <!-- Header -->
-        <header class="header">
+    <div class="map-first-container">
+        <!-- Full Screen Map -->
+        <div id="map" class="full-screen-map"></div>
+        
+        <!-- Floating Header Card -->
+        <div class="floating-header">
             <div class="header-content">
                 <div class="user-info">
                     <h2 id="user-name">Loading...</h2>
-                    <p class="user-role">Rider</p>
+                    <p class="user-role">🌟 Campus Community Member</p>
                 </div>
-                <button onclick="handleLogout()" class="logout-btn">Logout</button>
+                <div class="header-actions">
+                    <button class="header-btn" id="view-results-btn" title="View Ride Results">🔍</button>
+                    <button class="header-btn" id="notifications-btn">💬</button>
+                    <button class="header-btn" id="profile-btn">👤</button>
+                    <button onclick="handleLogout()" class="logout-btn">Logout</button>
+                </div>
             </div>
-        </header>
+        </div>
 
-        <!-- Main Dashboard Content -->
-        <main class="dashboard-content">
-            <!-- Location Selection Section -->
-            <section class="location-section">
-                <h3>Where do you want to go?</h3>
-                
-                <div class="form-group">
-                    <label for="pickup-input">Pickup Location</label>
-                    <div class="location-input-group">
-                        <input 
-                            type="text" 
-                            id="pickup-input" 
-                            class="form-input location-input" 
-                            placeholder="Enter pickup location or use current"
-                            autocomplete="off"
-                        >
-                        <button id="current-location-btn" class="location-btn" title="Use current location">
-                            📍
-                        </button>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="destination-input">Destination</label>
-                    <div class="location-input-group">
-                        <input 
-                            type="text" 
-                            id="destination-input" 
-                            class="form-input location-input" 
-                            placeholder="Enter destination"
-                            autocomplete="off"
-                        >
-                        <button id="college-location-btn" class="location-btn" title="Set to college">
-                            🏫
-                        </button>
-                    </div>
-                </div>
-
-                <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                    <button id="search-rides-btn" class="btn btn-primary" style="flex: 1;">
-                        🔍 Find Now
-                    </button>
-                    <button id="prebook-btn" class="btn btn-outline" style="flex: 1;">
-                        📅 Pre-Book
-                    </button>
-                    <button id="my-prebooks-btn" class="btn btn-outline" style="flex: 1;">
-                        📋 My Requests
-                    </button>
-                </div>
-            </section>
-            <!-- Pre-Booking Section -->
-            <section id="prebook-section" class="location-section hidden">
-                <h3>📅 Schedule Future Ride</h3>
-                
-                <div class="form-group">
-                    <label for="prebook-datetime">When do you need the ride?</label>
+        <!-- Floating Search Card -->
+        <div class="floating-search-card" id="search-card">
+            <div class="search-header">
+                <h3>🎯 Where are you heading?</h3>
+            </div>
+            
+            <div class="search-form">
+                <div class="location-input-group">
                     <input 
-                        type="datetime-local" 
-                        id="prebook-datetime" 
-                        class="form-input"
-                        min=""
-                        required
+                        type="text" 
+                        id="pickup-input" 
+                        class="location-input" 
+                        placeholder="📍 From: Current location"
+                        autocomplete="off"
                     >
+                    <button id="current-location-btn" class="location-btn" title="Use current location">
+                        📍
+                    </button>
                 </div>
 
-                <div class="form-group">
-                    <label for="max-fare">Maximum fare (optional)</label>
+                <div class="location-input-group">
                     <input 
-                        type="number" 
-                        id="max-fare" 
-                        class="form-input" 
-                        placeholder="e.g., 150"
-                        min="50"
-                        max="500"
+                        type="text" 
+                        id="destination-input" 
+                        class="location-input" 
+                        placeholder="🎯 To: Choose destination..."
+                        autocomplete="off"
                     >
+                    <button id="college-location-btn" class="location-btn" title="Set to college">
+                        🏫
+                    </button>
                 </div>
 
-                <div class="form-group">
-                    <label for="ride-notes">Special instructions (optional)</label>
-                    <textarea 
-                        id="ride-notes" 
-                        class="form-input" 
-                        placeholder="e.g., Wait outside main gate, I have luggage"
-                        maxlength="200"
-                        rows="3"
-                    ></textarea>
+                <!-- Campus Quick Buttons -->
+                <div class="campus-quick-buttons">
+                    <button class="quick-btn" data-destination="🏠 Home">🏠 Home</button>
+                    <button class="quick-btn" data-destination="🏫 College">🏫 College</button>
                 </div>
 
-                <button id="create-prebook-btn" class="btn btn-secondary btn-full">
-                    📅 Create Pre-Booking Request
+                <div class="time-selection">
+                    <label>🕐 When:</label>
+                    <select id="ride-time" class="time-select">
+                        <option value="now">Now</option>
+                        <option value="15min">In 15 min</option>
+                        <option value="30min">In 30 min</option>
+                        <option value="1hour">In 1 hour</option>
+                    </select>
+                </div>
+
+                <button id="search-rides-btn" class="btn btn-primary btn-full">
+                    🔍 Find Ride Buddies
                 </button>
-            </section>
+                <button id="clear-search-btn" class="btn btn-outline btn-full" style="margin-top: 0.5rem;">
+                    🗑️ Clear & Start Fresh
+                </button>
+            </div>
+        </div>
+        <!-- Floating Ride Results Card -->
+        <div class="floating-results-card hidden" id="results-card">
+            <div class="results-header">
+                <h3>🤝 Available Ride Buddies</h3>
+                <button class="close-btn" id="close-results-btn">✕</button>
+            </div>
+            
 
-            <!-- My Pre-Bookings Section -->
-            <section id="my-prebooks-section" class="location-section hidden">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                    <h3>📋 My Pre-Bookings</h3>
-                    <button id="refresh-prebooks-btn" class="btn btn-outline" style="padding: 0.5rem 1rem;">
-                        🔄 Refresh
-                    </button>
+            <div id="ride-buddies-list" class="ride-buddies-list">
+                <!-- Ride buddy cards will be populated here -->
+            </div>
+            
+            <div id="no-ride-buddies" class="empty-state hidden">
+                <div class="empty-icon">🏍️</div>
+                <h3>No ride buddies available</h3>
+                <p>Try adjusting your pickup location or check back later. More ride buddies are usually available during peak hours.</p>
+                <div class="empty-actions">
+                    <button class="btn btn-outline" id="post-request-btn">📢 Post Ride Request</button>
+                    <button class="btn btn-secondary" id="create-group-btn">⚡ Create Group Ride</button>
                 </div>
-                
-                <div id="prebooks-list" class="drivers-list">
-                    <!-- Pre-booking cards will be populated here -->
-                </div>
-                
-                <div id="no-prebooks" class="empty-state hidden">
-                    <h3>No pre-bookings yet</h3>
-                    <p>Create your first pre-booking request to schedule future rides.</p>
-                </div>
-            </section>
+            </div>
+        </div>
 
-            <!-- Status Messages -->
-            <div id="status-message" class="hidden"></div>
 
-            <!-- View Toggle -->
-            <div id="view-toggle" class="view-toggle hidden">
-                <button id="map-view-btn" class="view-btn active">🗺️ Map View</button>
-                <button id="list-view-btn" class="view-btn">📋 List View</button>
+        <!-- Floating Active Ride Card -->
+        <div class="floating-active-ride hidden" id="active-ride-card">
+            <div class="active-ride-header">
+                <h3>🚗 Ride in Progress</h3>
+                <div class="ride-status">With Driver</div>
+            </div>
+            
+            <div class="ride-buddies-list" id="active-ride-buddies">
+                <!-- Ride buddies will be populated dynamically -->
             </div>
 
-            <!-- Map Container -->
-            <div id="map-container" class="map-container hidden">
-                <div id="map"></div>
-            </div>
-
-            <!-- Drivers List -->
-            <div id="drivers-section" class="hidden">
-                <div id="drivers-list" class="drivers-list">
-                    <!-- Driver cards will be populated here -->
-                </div>
-                
-                <div id="no-drivers" class="empty-state hidden">
-                    <div class="empty-icon">🚗</div>
-                    <h3>No rides available</h3>
-                    <p>Try adjusting your pickup location or check back later. More drivers are usually available during peak hours.</p>
-                    <div class="empty-tips">
-                        <h4>💡 Tips to find more rides:</h4>
-                        <ul>
-                            <li>Search during college hours (7-9 AM, 5-7 PM)</li>
-                            <li>Try a nearby location as pickup point</li>
-                            <li>Check if your destination matches popular routes</li>
-                        </ul>
-                    </div>
+            <div class="group-chat">
+                <div class="chat-messages" id="active-ride-chat">
+                    <!-- Chat messages will be populated dynamically -->
                 </div>
             </div>
 
-            <!-- Loading State -->
-            <div id="loading" class="loading hidden">
+            <div class="ride-actions">
+                <button class="btn btn-outline" id="call-driver-btn">📞 Call Driver</button>
+                <button class="btn btn-outline" id="share-location-btn">📍 Share Location</button>
+                <button class="btn btn-outline" id="group-chat-btn">💬 Group Chat</button>
+            </div>
+
+            <div class="ride-details">
+                <div class="otp-display">
+                    <span class="otp-label">📱 Your OTP:</span>
+                    <span class="otp-code" id="rider-otp-display">Loading...</span>
+                </div>
+                <div class="eta-display">
+                    <span class="eta-label">⏱️ ETA to destination:</span>
+                    <span class="eta-time" id="rider-eta-display">Calculating...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="status-message" class="floating-status hidden"></div>
+
+        <!-- Loading State -->
+        <div id="loading" class="floating-loading hidden">
+            <div class="loading-content">
                 <div class="spinner"></div>
-                <span>Searching for nearby rides...</span>
+                <span>Searching for ride buddies...</span>
             </div>
-        </main>
+        </div>
 
         <!-- Profile Completion Modal -->
         <div id="profile-modal" class="modal-overlay hidden">

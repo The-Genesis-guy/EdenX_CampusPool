@@ -3,63 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CampusPool - Driver Dashboard</title>
+    <title>🎓 CampusPool - Help Your Community</title>
     <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
 <body>
-    <div class="dashboard-container">
-        <!-- Header -->
-        <header class="header">
+    <div class="map-first-container">
+        <!-- Full Screen Map -->
+        <div id="map" class="full-screen-map"></div>
+        
+        <!-- Floating Header Card -->
+        <div class="floating-header">
             <div class="header-content">
                 <div class="user-info">
                     <h2 id="user-name">Loading...</h2>
-                    <p class="user-role">Driver</p>
+                    <p class="user-role">🌟 Active Community Helper</p>
                 </div>
-                <button onclick="handleLogout()" class="logout-btn">Logout</button>
-            </div>
-        </header>
-
-        <!-- Main Dashboard Content -->
-        <main class="dashboard-content">
-            <!-- Online/Offline Toggle -->
-            <div class="toggle-container">
-                <div>
-                    <div class="toggle-label">Go Online</div>
-                    <small class="text-secondary">Start accepting ride requests</small>
-                </div>
-                <div class="toggle-switch" id="online-toggle">
-                    <div class="toggle-slider"></div>
+                <div class="header-actions">
+                    <button class="header-btn" id="view-requests-btn" title="View Ride Requests">📋</button>
+                    <button class="header-btn" id="notifications-btn">💬</button>
+                    <button class="header-btn" id="profile-btn">👤</button>
+                    <button onclick="handleLogout()" class="logout-btn">Logout</button>
                 </div>
             </div>
+        </div>
 
-            <!-- Route Setup Section (shown when going online) -->
-            <section id="route-section" class="location-section hidden">
-                <h3>Set Your Route</h3>
-                
-                <div class="form-group">
-                    <label for="pickup-input">Starting Point</label>
-                    <div class="location-input-group">
-                        <input 
-                            type="text" 
-                            id="pickup-input" 
-                            class="form-input location-input" 
-                            placeholder="Where are you starting from?"
-                            autocomplete="off"
-                        >
-                        <button id="current-location-btn" class="location-btn" title="Use current location">
-                            📍
-                        </button>
+        <!-- Floating Helper Status Card -->
+        <div class="floating-helper-card" id="helper-card">
+            <div class="helper-header">
+                <h3>🤝 Ready to help community?</h3>
+                <div class="helper-toggle">
+                    <div class="toggle-switch" id="online-toggle">
+                        <div class="toggle-slider"></div>
                     </div>
                 </div>
+            </div>
+            
+            <div class="helper-status" id="helper-status">
+                <div class="status-indicator offline">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Taking a break</span>
+                </div>
+            </div>
 
-                <div class="form-group">
-                    <label for="destination-input">Destination</label>
+            <!-- Route Setup (shown when online) -->
+            <div class="route-setup hidden" id="route-setup">
+                <div class="route-inputs">
                     <div class="location-input-group">
                         <input 
                             type="text" 
                             id="destination-input" 
-                            class="form-input location-input" 
-                            placeholder="Where are you going?"
+                            class="location-input" 
+                            placeholder="🎯 I'm going to..."
                             autocomplete="off"
                         >
                         <button id="college-location-btn" class="location-btn" title="Set to college">
@@ -68,92 +62,145 @@
                     </div>
                 </div>
 
-                <button id="start-ride-btn" class="btn btn-secondary btn-full">
-                    🚀 Start Accepting Requests
+                <!-- Campus Quick Destinations -->
+                <div class="campus-quick-buttons">
+                    <button class="quick-btn" data-destination="🏠 Home">🏠 Home</button>
+                    <button class="quick-btn" data-destination="🏫 College">🏫 College</button>
+                </div>
+
+                <div class="helper-details">
+                    <div class="detail-group">
+                        <label>🕐 Leaving:</label>
+                        <select id="departure-time" class="time-select">
+                            <option value="now">Now</option>
+                            <option value="15min">In 15 min</option>
+                            <option value="30min">In 30 min</option>
+                            <option value="1hour">In 1 hour</option>
+                        </select>
+                    </div>
+                    
+                    <div class="detail-group">
+                        <label>👥 Seats:</label>
+                        <select id="available-seats" class="time-select">
+                            <option value="1">1 available</option>
+                            <option value="2">2 available</option>
+                            <option value="3">3 available</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="helper-message">
+                    <label>💭 Message to riders:</label>
+                    <textarea 
+                        id="helper-message" 
+                        class="message-input" 
+                        placeholder="e.g., 'Heading to mall for lunch!'"
+                        maxlength="100"
+                        rows="2"
+                    ></textarea>
+                </div>
+
+                <button id="start-helping-btn" class="btn btn-primary btn-full">
+                    🤝 Start Helping Community
                 </button>
-            </section>
-
-            <!-- Status Messages -->
-            <div id="status-message" class="hidden"></div>
-
-            <!-- Online Status -->
-            <div id="online-status" class="status-message status-success hidden">
-                <strong>🟢 You're Online!</strong><br>
-                Riders can now see and request rides from you.
             </div>
 
-            <!-- Ride Requests Section -->
-            <section id="requests-section" class="hidden">
-                <!-- Pre-Booking Marketplace Section -->
-            <section id="prebook-marketplace-section" class="hidden">
-                <div class="location-section">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                        <h3>📅 Pre-Booking Marketplace</h3>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <button id="browse-prebooks-btn" class="btn btn-outline" style="padding: 0.5rem 1rem;">
-                                🔍 Browse
-                            </button>
-                            <button id="my-accepted-prebooks-btn" class="btn btn-outline" style="padding: 0.5rem 1rem;">
-                                📋 My Schedule
-                            </button>
-                        </div>
+            <!-- Helper Stats (shown when online) -->
+            <div class="helper-stats hidden" id="helper-stats">
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-number">12</div>
+                        <div class="stat-label">Rides shared</div>
                     </div>
-                    
-                    <div id="prebook-requests-list" class="requests-list">
-                        <!-- Pre-booking request cards will be populated here -->
+                    <div class="stat-item">
+                        <div class="stat-number">15kg</div>
+                        <div class="stat-label">CO₂ saved</div>
                     </div>
-                    
-                    <div id="my-accepted-list" class="requests-list hidden">
-                        <!-- Accepted pre-bookings will be populated here -->
-                    </div>
-                    
-                    <div id="no-prebook-requests" class="empty-state hidden">
-                        <h3>No pre-booking requests</h3>
-                        <p>Check back later for upcoming ride requests from students.</p>
+                    <div class="stat-item">
+                        <div class="stat-number">8</div>
+                        <div class="stat-label">New connections</div>
                     </div>
                 </div>
-            </section>
-                <div class="location-section">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                        <h3>Ride Requests</h3>
-                        <button id="refresh-requests-btn" class="btn btn-outline" style="padding: 0.5rem 1rem;">
-                            🔄 Refresh
-                        </button>
-                    </div>
-                    
-                    <div id="requests-list" class="requests-list">
-                        <!-- Request cards will be populated here -->
-                    </div>
-                    
-                    <div id="no-requests" class="empty-state hidden">
-                        <h3>No ride requests yet</h3>
-                        <p>Wait for riders to request your ride. Requests will appear here automatically.</p>
-                    </div>
-                </div>
-            </section>
+            </div>
+        </div>
 
-            <!-- Active Ride Section -->
-            <section id="active-ride-section" class="hidden">
-                <div class="location-section">
-                    <h3>Active Ride</h3>
-                    <div id="active-ride-details">
-                        <!-- Active ride details will be populated here -->
-                    </div>
+        <!-- Floating Ride Requests Card -->
+        <div class="floating-requests-card hidden" id="requests-card">
+            <div class="requests-header">
+                <h3>🙋‍♀️ Ride Requests</h3>
+                <button class="close-btn" id="close-requests-btn">✕</button>
+            </div>
+            
+            <div id="ride-requests-list" class="ride-requests-list">
+                <!-- Ride request cards will be populated here -->
+            </div>
+            
+            <div id="no-ride-requests" class="empty-state hidden">
+                <div class="empty-icon">🏍️</div>
+                <h3>No ride requests yet</h3>
+                <p>Wait for riders to request your ride. Requests will appear here automatically.</p>
+                <div class="empty-tips">
+                    <h4>💡 Tips to get more requests:</h4>
+                    <ul>
+                        <li>Set popular campus destinations</li>
+                        <li>Be available during peak hours (7-9 AM, 5-7 PM)</li>
+                        <li>Add a friendly message to your ride</li>
+                    </ul>
                 </div>
-            </section>
+            </div>
+        </div>
 
-            <!-- Loading State -->
-            <div id="loading" class="loading hidden">
+        <!-- Floating Active Ride Card -->
+        <div class="floating-active-ride hidden" id="active-ride-card">
+            <div class="active-ride-header">
+                <h3>🏍️ Helping Community</h3>
+                <div class="ride-status">In Transit</div>
+            </div>
+            
+            <div class="ride-buddies-list" id="active-ride-buddies">
+                <!-- Ride buddies will be populated dynamically -->
+            </div>
+
+            <div class="group-chat">
+                <div class="chat-messages" id="active-ride-chat">
+                    <!-- Chat messages will be populated dynamically -->
+                </div>
+            </div>
+
+            <div class="ride-actions">
+                <button class="btn btn-outline">💬 Group Chat</button>
+                <button class="btn btn-outline">📍 Share Location</button>
+                <button class="btn btn-secondary">✅ Complete Ride</button>
+            </div>
+
+            <div class="ride-details">
+                <div class="otp-display">
+                    <span class="otp-label">📱 Ask rider for OTP:</span>
+                    <span class="otp-code">Enter OTP to start trip</span>
+                </div>
+                <div class="eta-display">
+                    <span class="eta-label">⏱️ ETA to destination:</span>
+                    <span class="eta-time" id="active-ride-eta">Calculating...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="status-message" class="floating-status hidden"></div>
+
+        <!-- Loading State -->
+        <div id="loading" class="floating-loading hidden">
+            <div class="loading-content">
                 <div class="spinner"></div>
-                <span>Loading requests...</span>
+                <span>Loading ride requests...</span>
             </div>
-        </main>
+        </div>
 
         <!-- Profile Completion Modal -->
         <div id="profile-modal" class="modal-overlay hidden">
             <div class="modal-content">
-                <h3>Complete Your Driver Profile</h3>
-                <p class="mb-4 text-center">Please provide your vehicle information to start offering rides.</p>
+                <h3>Complete Your Helper Profile</h3>
+                <p class="mb-4 text-center">Please provide your bike information to start helping the community.</p>
                 
                 <form id="profile-form">
                     <div class="form-group">
@@ -169,18 +216,18 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="vehicle-model">Vehicle Model *</label>
+                        <label for="vehicle-model">Bike Model *</label>
                         <input 
                             type="text" 
                             id="vehicle-model" 
                             class="form-input" 
-                            placeholder="e.g., Honda Activa, Bajaj Pulsar"
+                            placeholder="e.g., Honda Activa, Bajaj Pulsar, TVS Apache"
                             required
                         >
                     </div>
 
                     <div class="form-group">
-                        <label for="vehicle-color">Vehicle Color *</label>
+                        <label for="vehicle-color">Bike Color *</label>
                         <input 
                             type="text" 
                             id="vehicle-color" 
@@ -191,7 +238,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="vehicle-plate">Vehicle Number *</label>
+                        <label for="vehicle-plate">Bike Number *</label>
                         <input 
                             type="text" 
                             id="vehicle-plate" 
@@ -223,16 +270,34 @@
                     </div>
 
                     <button type="submit" class="btn btn-primary btn-full">
-                        Complete Profile
+                        🤝 Start Helping Community
                     </button>
                 </form>
+            </div>
+        </div>
+
+        <!-- Ride Request Modal -->
+        <div id="request-modal" class="modal-overlay hidden">
+            <div class="modal-content">
+                <h3>🤝 Ride Request</h3>
+                <div id="request-details" class="request-details">
+                    <!-- Request details will be populated here -->
+                </div>
+                <div class="request-actions">
+                    <button id="accept-request-btn" class="btn btn-primary btn-full">
+                        ✅ Sure! Let's ride together
+                    </button>
+                    <button id="decline-request-btn" class="btn btn-outline btn-full mt-2">
+                        ❌ Sorry, can't help this time
+                    </button>
+                </div>
             </div>
         </div>
 
         <!-- OTP Modal for Accepted Rides -->
         <div id="otp-modal" class="modal-overlay hidden">
             <div class="modal-content">
-                <h3>Ride Accepted!</h3>
+                <h3>🤝 Ride Accepted!</h3>
                 <div id="otp-details" class="text-center mb-4">
                     <!-- OTP details will be populated here -->
                 </div>
@@ -244,6 +309,6 @@
     </div>
 
     <script src="/static/js/driver_dashboard.js"></script>
-<script src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places,marker&callback=initDriverApp" async defer></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places,marker&callback=initDriverApp" async defer></script>
 </body>
 </html>

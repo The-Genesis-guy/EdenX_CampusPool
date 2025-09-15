@@ -3,41 +3,161 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CampusPool</title>
+    <title>🎓 CampusPool - Share Rides, Make Friends</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <header>
-        <h1>CampusPool</h1>
-        <nav>
-            <a href="#" id="show-login-link">Login</a>
-            <a href="#" id="show-register-link">Register</a>
-        </nav>
-    </header>
+    <!-- Community Welcome Landing Page -->
+    <div id="landing-page" class="landing-page">
+        <header class="landing-header">
+            <div class="header-content">
+                <h1>🎓 CampusPool</h1>
+                <nav>
+                    <a href="#" id="show-login-link" class="nav-link">Login</a>
+                    <a href="#" id="show-register-link" class="nav-link">Join Community</a>
+                </nav>
+            </div>
+        </header>
 
-    <main>
-        <form id="register-form" class="auth-form hidden">
-            <h2>Register</h2>
+        <main class="landing-main">
+            <!-- Hero Section -->
+            <section class="hero-section">
+                <div class="hero-illustration">
+                    <div class="bike-illustration">
+                        <div class="bike">🏍️</div>
+                        <div class="students">
+                            <div class="student">👨‍🎓</div>
+                            <div class="student">👩‍🎓</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="hero-content">
+                    <h2>Share rides with your campus community</h2>
+                    <p class="hero-subtitle">Save money, make friends, help the environment!</p>
+                    
+                    <div class="cta-buttons">
+                        <button class="btn btn-primary" id="find-rides-btn">
+                            🏍️ Find Ride Buddies
+                        </button>
+                        <button class="btn btn-secondary" id="offer-rides-btn">
+                            🤝 Offer Rides to Community
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- How It Works -->
+            <section class="how-it-works">
+                <h3>How CampusPool Works</h3>
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-icon">👥</div>
+                        <h4>Connect</h4>
+                        <p>Find fellow students going your way</p>
+                    </div>
+                    <div class="step">
+                        <div class="step-icon">🏍️</div>
+                        <h4>Share</h4>
+                        <p>Ride together and split fuel costs</p>
+                    </div>
+                    <div class="step">
+                        <div class="step-icon">💰</div>
+                        <h4>Split</h4>
+                        <p>Fair cost sharing, not profit</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Community Benefits -->
+            <section class="benefits">
+                <h3>Why Join CampusPool?</h3>
+                <div class="benefits-grid">
+                    <div class="benefit">
+                        <div class="benefit-icon">♻️</div>
+                        <h4>Eco-Friendly</h4>
+                        <p>Reduce campus traffic and carbon footprint</p>
+                    </div>
+                    <div class="benefit">
+                        <div class="benefit-icon">💸</div>
+                        <h4>Save Money</h4>
+                        <p>Split fuel costs instead of paying full fare</p>
+                    </div>
+                    <div class="benefit">
+                        <div class="benefit-icon">🤝</div>
+                        <h4>Meet People</h4>
+                        <p>Connect with fellow students and make friends</p>
+                    </div>
+                    <div class="benefit">
+                        <div class="benefit-icon">🛡️</div>
+                        <h4>Campus Verified</h4>
+                        <p>Safe rides with verified college students</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Auth Forms (Hidden by default) -->
+    <div id="auth-forms" class="auth-forms hidden">
+        <form id="register-form" class="auth-form">
+            <div class="auth-header">
+                <h2>Join CampusPool Community</h2>
+                <p>Connect with fellow students and share rides</p>
+            </div>
+            
             <input type="text" id="register-name" placeholder="Full Name" required>
             <input type="email" id="register-email" placeholder="College Email" required>
             <input type="password" id="register-password" placeholder="Password" required>
+            
             <div class="address-group">
                 <input type="text" id="register-address" placeholder="Enter your home address or click 'Use My Location'" required autocomplete="off">
-                <button type="button" id="get-location-btn">Use My Location</button>
+                <button type="button" id="get-location-btn">📍</button>
             </div>
             <small id="address-status" class="address-status"></small>
+            
             <div class="role-selector">
-                <label><input type="radio" name="role" value="rider" checked> I'm a Rider</label>
-                <label><input type="radio" name="role" value="driver"> I'm a Driver</label>
+                <label class="role-option">
+                    <input type="radio" name="role" value="rider" checked>
+                    <div class="role-card">
+                        <div class="role-icon">🏍️</div>
+                        <div class="role-text">
+                            <h4>I'm a Rider</h4>
+                            <p>Looking for ride buddies</p>
+                        </div>
+                    </div>
+                </label>
+                <label class="role-option">
+                    <input type="radio" name="role" value="driver">
+                    <div class="role-card">
+                        <div class="role-icon">🤝</div>
+                        <div class="role-text">
+                            <h4>I'm a Helper</h4>
+                            <p>Offering rides to community</p>
+                        </div>
+                    </div>
+                </label>
             </div>
-            <button type="submit">Register</button>
+            
+            <button type="submit" class="btn btn-primary btn-full">Join Community</button>
+            <p class="auth-footer">
+                Already a member? <a href="#" id="show-login-from-register">Login here</a>
+            </p>
         </form>
 
-        <form id="login-form" class="auth-form">
-            <h2>Login</h2>
-            <input type="email" id="login-email" placeholder="Email" required>
+        <form id="login-form" class="auth-form hidden">
+            <div class="auth-header">
+                <h2>Welcome Back!</h2>
+                <p>Continue your campus community journey</p>
+            </div>
+            
+            <input type="email" id="login-email" placeholder="College Email" required>
             <input type="password" id="login-password" placeholder="Password" required>
-            <button type="submit">Login</button>
+            
+            <button type="submit" class="btn btn-primary btn-full">Login</button>
+            <p class="auth-footer">
+                New to CampusPool? <a href="#" id="show-register-from-login">Join community</a>
+            </p>
         </form>
 
         <div id="message-area" class="hidden"></div>
@@ -51,7 +171,7 @@
             <h2>Welcome to CampusPool!</h2>
             <p>You are logged in. The map and ride functionality will appear here.</p>
         </div>
-    </main>
+    </div>
 
     <script src="/static/js/script.js"></script>
     <script src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places,marker&callback=initApp" async defer></script>

@@ -171,19 +171,57 @@ def request_ride():
     """Rider requests a specific ride"""
     data = request.get_json()
     
+    # Debug logging
+    print(f"Received ride request data: {data}")
+    print(f"Data keys: {list(data.keys()) if data else 'None'}")
+    
     required_fields = ['ride_id', 'pickup_location', 'destination_location',
                       'pickup_address', 'destination_address']
     
-    if not all(field in data for field in required_fields):
-        return jsonify({"error": "Missing required fields"}), 400
+    # Check each field individually for better debugging
+    missing_fields = []
+    for field in required_fields:
+        if field not in data:
+            missing_fields.append(field)
+        else:
+            print(f"Field '{field}': {data[field]}")
+    
+    if missing_fields:
+        print(f"Missing fields: {missing_fields}")
+        return jsonify({"error": f"Missing required fields: {missing_fields}"}), 400
+    
+    # Validate data types and values
+    if not isinstance(data['pickup_location'], list) or len(data['pickup_location']) != 2:
+        print(f"Invalid pickup_location format: {data['pickup_location']}")
+        return jsonify({"error": "Invalid pickup_location format. Expected [longitude, latitude]"}), 400
+    
+    if not isinstance(data['destination_location'], list) or len(data['destination_location']) != 2:
+        print(f"Invalid destination_location format: {data['destination_location']}")
+        return jsonify({"error": "Invalid destination_location format. Expected [longitude, latitude]"}), 400
+    
+    if not data['pickup_address'] or not data['pickup_address'].strip():
+        print(f"Empty pickup_address: '{data['pickup_address']}'")
+        return jsonify({"error": "pickup_address cannot be empty"}), 400
+    
+    if not data['destination_address'] or not data['destination_address'].strip():
+        print(f"Empty destination_address: '{data['destination_address']}'")
+        return jsonify({"error": "destination_address cannot be empty"}), 400
     
     rider_id = request.current_user['user_id']
     
     # Validate ride exists and is active
-    ride = mongo.db.rides.find_one({
-        "_id": ObjectId(data['ride_id']),
-        "status": "active"
-    })
+    print(f"Looking for ride with ID: {data['ride_id']}")
+    try:
+        ride = mongo.db.rides.find_one({
+            "_id": ObjectId(data['ride_id']),
+            "status": "active"
+        })
+        print(f"Found ride: {ride is not None}")
+        if ride:
+            print(f"Ride status: {ride.get('status')}")
+    except Exception as e:
+        print(f"Error converting ride_id to ObjectId: {e}")
+        return jsonify({"error": "Invalid ride_id format"}), 400
     
     if not ride:
         return jsonify({"error": "Ride not found or no longer available"}), 404
@@ -229,6 +267,27 @@ def request_ride():
         "message": "Ride requested successfully!",
         "request_id": str(result.inserted_id),
         "estimated_fare": calculated_fare
+    }), 201
+
+@rides_bp.route('/test-request', methods=['POST'])
+@token_required
+@role_required('rider')
+def test_ride_request():
+    """Test endpoint for ride request without requiring real ride ID"""
+    data = request.get_json()
+    
+    # Generate a test OTP
+    import random
+    import string
+    otp = ''.join(random.choices(string.digits, k=4))
+    
+    return jsonify({
+        "message": "Test ride request successful!",
+        "request_id": "test_request_123",
+        "otp": otp,
+        "driver_name": "Test Driver",
+        "driver_phone": "+91 98765 43210",
+        "estimated_duration": "15 min"
     }), 201
 
 @rides_bp.route('/request-status/<request_id>', methods=['GET'])
@@ -722,6 +781,51 @@ def get_driver_location(request_id):
         response_data['location_updated_at'] = driver_ride.get('location_updated_at')
     
     return jsonify(response_data), 200
+
+@rides_bp.route('/share-rider-location', methods=['POST'])
+@token_required
+@role_required('rider')
+def share_rider_location():
+    """Share rider's current location with driver during active ride"""
+    data = request.get_json()
+    
+    if 'request_id' not in data or 'current_location' not in data:
+        return jsonify({"error": "request_id and current_location required"}), 400
+    
+    current_coords = data['current_location']
+    if not isinstance(current_coords, list) or len(current_coords) != 2:
+        return jsonify({"error": "Invalid location format"}), 400
+    
+    rider_id = request.current_user['user_id']
+    
+    # Find the active ride request
+    ride_request = mongo.db.ride_requests.find_one({
+        "_id": ObjectId(data['request_id']),
+        "rider_id": ObjectId(rider_id),
+        "status": {"$in": ["accepted", "started"]}
+    })
+    
+    if not ride_request:
+        return jsonify({"error": "Active ride not found"}), 404
+    
+    # Update rider location in the ride request
+    result = mongo.db.ride_requests.update_one(
+        {"_id": ObjectId(data['request_id'])},
+        {
+            "$set": {
+                "rider_current_location": {
+                    "type": "Point",
+                    "coordinates": current_coords
+                },
+                "rider_location_updated_at": datetime.datetime.utcnow()
+            }
+        }
+    )
+    
+    if result.matched_count == 0:
+        return jsonify({"error": "Failed to update location"}), 500
+    
+    return jsonify({"message": "Location shared successfully"}), 200
 
 
 # ===============================
