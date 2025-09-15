@@ -1,4 +1,4 @@
-# 🎓 CampusPool - Campus Bike Sharing Platform
+# 🎓 CampusPool - Campus Ride Sharing Platform
 
 > Share rides, save money, build community
 
