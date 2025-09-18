@@ -210,27 +210,27 @@ CampusPool/
 **CampusPool**: Building a sustainable, connected, and affordable campus transportation ecosystem through community-driven bike sharing. 🌱🚴‍♂️🎓
 
 
-# ⚡ Installation & Setup
+## ⚡ Installation & Setup
 
-# 1. Clone the repository
+### 1. Clone the repository
 git clone https://github.com/your-username/CampusPool.git
 cd CampusPool
 
-# 2. Create and activate a virtual environment
+### 2. Create and activate a virtual environment
 python -m venv venv
 source venv/bin/activate   # On Windows: venv\Scripts\activate
 
-# 3. Install dependencies
+### 3. Install dependencies**
 pip install -r requirements.txt
 
-# 4. Configure environment variables
-# 👉 Open backend/config.py and add:
-#    - MongoDB connection string
-#    - Google Maps API key
+### 4. Configure environment variables
+**👉 Open backend/config.py and add:**
+**    - MongoDB connection string**
+**    - Google Maps API key**
 
-# 5. Initialize the database (first-time setup)
+### 5. Initialize the database (first-time setup)
 cd backend
 python setup_database.py
 
-# 6. Run the backend server
+### 6. Run the backend server
 python run.py
